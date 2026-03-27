@@ -1,6 +1,7 @@
 const DAYS_IN_YEAR = 365.25;
 const STORAGE_KEY = "lp-analytics-batch-snapshots-v1";
-const RANGE_MULTIPLIER_EXPONENT = 0.93;
+const MIN_USER_RANGE_WIDTH = 0.01;
+const MAX_REASONABLE_DELTA_PCT = 500;
 
 const pools = [
   { id: "eth-base-aerodrom", ecosystem: "ethereum", asset: "ETH/USDC", dex: "Aerodrom", network: "Base", feePct: 0.034, minRange: 1004.311, maxRange: 6515.6585, currentPrice: 2983.6, startLiquidityUsd: 52.7, currentLiquidity: 42.51, startedAt: "2025-12-26T11:08:00", seedFees: 2.11105 },
@@ -14,7 +15,7 @@ const pools = [
   { id: "ausd-monad-uniswap", ecosystem: "bitcoin", asset: "AUSD/WBTC", dex: "Uniswap", network: "Monad", feePct: 0.05, minRange: 57806.3, maxRange: 117573, currentPrice: 87429, startLiquidityUsd: 52.06, currentLiquidity: 52.06, startedAt: "2025-12-27T22:50:00", seedFees: 2.1 },
   { id: "btcb-avax-uni", ecosystem: "bitcoin", asset: "BTC.B/USDC", dex: "Uniswap", network: "Avalanche", feePct: 0.3, minRange: 57806.3, maxRange: 117338, currentPrice: 87429, startLiquidityUsd: 52.01, currentLiquidity: 52.01, startedAt: "2025-12-27T22:50:00", seedFees: 2.7 },
   { id: "btcb-lfj-avax", ecosystem: "bitcoin", asset: "BTC.B/USDC", dex: "LFJ", network: "Avalanche", feePct: 0.05, minRange: 57814, maxRange: 117434, currentPrice: 87429, startLiquidityUsd: 51.54, currentLiquidity: 51.54, startedAt: "2025-12-27T22:50:00", seedFees: 2.279 },
-  { id: "avax-uniswap", ecosystem: "avalanche", asset: "AVAX/USDC", dex: "Uniswap", network: "Avalanche", feePct: 0.05, minRange: 6.02136, maxRange: 90.0331, currentPrice: 557, startLiquidityUsd: 557, currentLiquidity: 557, startedAt: "2026-02-24T22:00:00", seedFees: 4.38 },
+  { id: "avax-uniswap", ecosystem: "avalanche", asset: "AVAX/USDC", dex: "Uniswap", network: "Avalanche", feePct: 0.05, minRange: 6.02136, maxRange: 90.0331, currentPrice: 25.57, startLiquidityUsd: 557, currentLiquidity: 557, startedAt: "2026-02-24T22:00:00", seedFees: 4.38 },
 ];
 
 const sectionsOrder = [
@@ -24,7 +25,7 @@ const sectionsOrder = [
 ];
 
 function seedMarketPricesFromPools() {
-  const bySymbol = { BTC: 0, ETH: 0, AVAX: 557, USDC: 1 };
+  const bySymbol = { BTC: 0, ETH: 0, AVAX: 25.57, USDC: 1 };
 
   pools.forEach((pool) => {
     const symbol = getPoolQuoteSymbol(pool.asset);
@@ -327,6 +328,36 @@ function validateBatchSeries(batches) {
   const sorted = [...batches].sort(
     (left, right) => new Date(left.snapshotAt) - new Date(right.snapshotAt)
   );
+
+  for (const batch of sorted) {
+    if (!batch.snapshotAt || Number.isNaN(new Date(batch.snapshotAt).getTime())) {
+      return { valid: false, message: "Snapshot date is invalid.", batches: sorted };
+    }
+    for (const pool of pools) {
+      const total = Number(batch.totals?.[pool.id]);
+      if (!Number.isFinite(total) || total < 0) {
+        return { valid: false, message: `Invalid snapshot total for ${pool.asset} / ${pool.network}.`, batches: sorted };
+      }
+    }
+  }
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    for (const pool of pools) {
+      const prevTotal = Number(prev.totals?.[pool.id]);
+      const currTotal = Number(curr.totals?.[pool.id]);
+      if (currTotal < prevTotal) {
+        return { valid: false, message: `Snapshot totals cannot decrease for ${pool.asset} / ${pool.network}.`, batches: sorted };
+      }
+      if (prevTotal > 0) {
+        const deltaPct = ((currTotal - prevTotal) / prevTotal) * 100;
+        if (deltaPct > MAX_REASONABLE_DELTA_PCT) {
+          return { valid: false, message: `Suspicious snapshot jump for ${pool.asset} / ${pool.network}.`, batches: sorted };
+        }
+      }
+    }
+  }
 
   return { valid: true, batches: sorted };
 }
@@ -898,6 +929,16 @@ function renderSections() {
   bindSectionControls();
 }
 
+function validateCalculatorInputs(liquidity, rangeWidth) {
+  if (!Number.isFinite(liquidity) || liquidity <= 0) {
+    return { valid: false, message: "Liquidity must be greater than 0." };
+  }
+  if (!Number.isFinite(rangeWidth) || rangeWidth < MIN_USER_RANGE_WIDTH) {
+    return { valid: false, message: `Range width must be at least ${MIN_USER_RANGE_WIDTH}.` };
+  }
+  return { valid: true };
+}
+
 function renderCalculatorMetrics(state) {
   const feesPerDay = state.projectedDailyFees;
   const weeklyFees = feesPerDay * 7;
@@ -905,11 +946,11 @@ function renderCalculatorMetrics(state) {
   const annualizedFees = feesPerDay * DAYS_IN_YEAR;
 
   calculatorMetrics.innerHTML = [
-    { label: "Daily fees", value: formatMoney(feesPerDay, 2), hero: true },
-    { label: "Projected APR", value: `${formatNumber(state.projectedApr, 2)}%`, heroAccent: true },
-    { label: "Yield multiplier", value: `${formatNumber(state.yieldMultiplier, 2)}x vs ref pool` },
-    { label: "Historical daily fees", value: formatMoney(state.historicalDailyFees, 4) },
-    { label: "Pool liquidity", value: formatMoney(state.referenceLiquidity, 2) },
+    { label: "Estimated daily fees", value: formatMoney(feesPerDay, 2), hero: true },
+    { label: "Estimated APR", value: `${formatNumber(state.projectedApr, 2)}%`, heroAccent: true },
+    { label: "Range-based multiplier", value: `${formatNumber(state.yieldMultiplier, 2)}x vs ref pool` },
+    { label: "Historical daily fees (window)", value: formatMoney(state.historicalDailyFees, 4) },
+    { label: "Reference liquidity used in model", value: formatMoney(state.referenceLiquidity, 2) },
     { label: "Current market price", value: formatMoney(state.currentMarketPrice, 2) },
     { label: "Reference price", value: formatMoney(state.referencePrice, 2) },
     { label: "Price scale", value: `${formatNumber(state.priceScale, 3)}x` },
@@ -959,7 +1000,7 @@ function renderCalculator() {
 
   calculatorForm.innerHTML = `
     <div class="field">
-      <span class="input-label">Quick select best yield</span>
+      <span class="input-label">Quick select top reference pool</span>
       <div class="quick-select">
         <button class="quick-button ${calculatorQuickKey === "ethereum" ? "active" : ""}" type="button" data-quick-pool="ethereum">ETH pool</button>
         <button class="quick-button ${calculatorQuickKey === "bitcoin" ? "active" : ""}" type="button" data-quick-pool="bitcoin">BTC pool</button>
@@ -976,14 +1017,15 @@ function renderCalculator() {
           .join("")}
       </select>
     </label>
-    <div class="field-hint">Ref APR: ${formatNumber(selected.apr, 2)}% | Historical daily fees: ${formatMoney(
+    <div class="field-hint">Reference APR: ${formatNumber(selected.apr, 2)}% | Historical daily fees (selected window): ${formatMoney(
       projection.historicalDailyFees,
       4
     )}</div>
-    <div class="field-hint">Ref range: ${formatNumber(referenceRange, 2)} | Pool liquidity: ${formatMoney(
+    <div class="field-hint">Reference range: ${formatNumber(referenceRange, 2)} | Reference liquidity used in model: ${formatMoney(
       selected.startLiquidityUsd,
       2
     )} | Price source: ${marketPrices.source}</div>
+    <div class="field-hint warning-note">This is a simplified estimate based on a reference pool and historical fees. It does not model time in range, price path, changing competition, or out-of-range probability.</div>
     <div class="field-row">
       <label class="field">
         <span class="input-label">Your liquidity (USD)</span>
@@ -995,7 +1037,8 @@ function renderCalculator() {
       </label>
     </div>
     <div class="field-hint">Reference price = sqrt(min range * max range). Scaled range = ref range * price scale.</div>
-    <div class="field-hint">Multiplier = scaled ref range / your input range. Narrower range increases yield but also out-of-range risk.</div>
+    <div class="field-hint">Range-based multiplier = scaled ref range / your input range. Narrower ranges increase estimated yield, but also increase real-world out-of-range risk, which this calculator does not model.</div>
+    <div class="field-hint">Minimum allowed input range width: ${formatNumber(MIN_USER_RANGE_WIDTH, 2)}</div>
     <div class="calculator-actions">
       <button class="calculator-button" type="submit">Project yield</button>
     </div>
@@ -1049,7 +1092,12 @@ function renderCalculator() {
     selectedPoolId = form.get("poolId");
     const chosen = ecosystemPools.find((state) => state.id === selectedPoolId) || selected;
     const liquidity = Number(form.get("liquidity")) || 0;
-    const rangeWidth = Number(form.get("rangeWidth")) || defaultRange;
+    const rangeWidth = Number(form.get("rangeWidth"));
+    const validation = validateCalculatorInputs(liquidity, rangeWidth);
+    if (!validation.valid) {
+      showToast(validation.message);
+      return;
+    }
     currentCalculatorLiquidity = liquidity;
     currentCalculatorRangeWidth = rangeWidth;
     renderCalculatorMetrics({
@@ -1080,7 +1128,7 @@ function projectCalculatorState(poolState, liquidity, rangeWidth) {
   const priceScale = referencePrice > 0 ? currentMarketPrice / referencePrice : 1;
   const referenceRange = poolState.range;
   const scaledReferenceRange = referenceRange * priceScale;
-  const safeRange = Math.max(rangeWidth, 0.0001);
+  const safeRange = Math.max(rangeWidth, MIN_USER_RANGE_WIDTH);
   const yieldMultiplier = scaledReferenceRange / safeRange;
   const projectedDailyFees =
     historicalDailyFees * (liquidity / referenceLiquidity) * yieldMultiplier;
