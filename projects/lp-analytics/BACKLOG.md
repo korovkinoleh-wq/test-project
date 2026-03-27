@@ -6,7 +6,13 @@
 - [ ] Описать первую версию продуктового scope
 - [ ] Зафиксировать первую версию формул расчёта комиссий
 - [ ] Описать формат snapshots и источник данных
-- [ ] Определить минимальный MVP калькулятора
+- [ ] Зафиксировать Calculator v1 как simplified estimator model
+- [ ] Исправить AVAX data inconsistency в calculator dataset
+- [ ] Добавить validation для user range width
+- [ ] Уточнить reference liquidity в UI и модели
+- [ ] Добавить базовую validation для snapshots
+- [ ] Смягчить wording calculator UI до estimate language
+- [ ] Подготовить первый online testing deploy
 
 ## Next
 

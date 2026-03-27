@@ -26,3 +26,32 @@
 ### Consequences
 - Любые решения, формулы и статусы нужно фиксировать в проектных файлах.
 - Любая новая сессия должна начинать с чтения `SESSION_START.md`.
+
+---
+
+## 2026-03-27 — Calculator vs Strategy split
+
+### Decision
+Calculator v1 остаётся упрощённым estimator-инструментом, а сложная логика уходит в Strategy v2+.
+
+### Why
+Быстрый калькулятор должен оставаться понятным и лёгким, без перегрузки сложной рыночной симуляцией.
+
+### Consequences
+- В calculator допускается simplified projection model.
+- Time-in-range, out-of-range dynamics, сценарии и risk modeling не добавляются в Calculator v1.
+- Эти вещи проектируются отдельно в Strategy layer.
+
+---
+
+## 2026-03-27 — Hosting direction
+
+### Decision
+Основной рекомендованный путь для первого онлайн-тестирования — Cloudflare Pages.
+
+### Why
+Проект сейчас выглядит как static/frontend-first app и не требует тяжёлой backend-инфраструктуры для тестового деплоя.
+
+### Consequences
+- Первый online deploy должен ориентироваться на static hosting workflow.
+- Если позже понадобится backend/db, следующий рекомендуемый слой — Supabase.
