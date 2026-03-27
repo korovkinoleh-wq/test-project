@@ -20,3 +20,6 @@
 - Получен AI Studio export со Strategy formulas/spec.
 - Добавлен файл `STRATEGY_FORMULAS_SPEC.md` как официальный источник формул Strategy/Rebalance layer.
 - Архитектура проекта обновлена с выделением calculator engine, strategy layer, rebalance/liquidation engine и portfolio allocation layer.
+- Выполнен formal review `STRATEGY_FORMULAS_SPEC.md`.
+- Зафиксировано, что первым в реализацию идёт Manual Strategy Core.
+- Созданы документы `STRATEGY_SPEC_REVIEW_2026-03-27.md`, `STRATEGY_IMPLEMENTATION_PLAN.md`, `AISTUDIO_FOLLOWUP_QUESTIONS.md`.

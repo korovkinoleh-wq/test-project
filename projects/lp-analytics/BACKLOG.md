@@ -12,8 +12,11 @@
 - [ ] Уточнить reference liquidity в UI и модели
 - [ ] Добавить базовую validation для snapshots
 - [ ] Смягчить wording calculator UI до estimate language
-- [ ] Formalize Strategy layer from AI Studio export into project docs
-- [ ] Review STRATEGY_FORMULAS_SPEC.md for mathematical consistency and implementation boundaries
+- [x] Formalize Strategy layer from AI Studio export into project docs
+- [x] Review STRATEGY_FORMULAS_SPEC.md for mathematical consistency and implementation boundaries
+- [ ] Implement Manual Strategy Core
+- [ ] Add Strategy Core validation rules and deterministic tests
+- [ ] Clarify Auto Split semantics (`k`, `Share_asset`, `k -> W`)
 
 ## Next
 

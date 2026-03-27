@@ -23,10 +23,10 @@ Review -> stabilization of Calculator v1
 
 ## What is next
 
-1. Продолжить стабилизацию Calculator v1 после первого patch-pass.
-2. Проверить pair orientation / scale consistency по remaining pools.
-3. Уточнить reference liquidity model окончательно.
-4. Перейти к следующей продуктовой задаче по LP Analytics.
+1. Реализовать Manual Strategy Core как первый модуль Strategy layer.
+2. Добавить validation rules и deterministic tests для Strategy Core.
+3. Продолжить стабилизацию Calculator v1 после первого patch-pass.
+4. Уточнить Auto Split semantics (`k`, `Share_asset`, `k -> W`) через follow-up review / AI Studio.
 5. При необходимости выпускать новые online deploy итерации через настроенный workflow.
 
 ## Current blockers
