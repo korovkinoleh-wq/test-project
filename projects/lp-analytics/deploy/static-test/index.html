@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LP-аналитика</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">LP</div>
+          <div>
+            <p class="eyebrow">LP Analytics</p>
+          </div>
+        </div>
+
+        <nav class="main-nav" id="mainNav">
+          <button class="nav-button active" data-view="dashboard">
+            Dashboard
+          </button>
+          <button class="nav-button" data-view="calculator">Calculator</button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <section class="view view-active" data-view-panel="dashboard">
+          <section class="summary-grid" id="summaryGrid"></section>
+          <section class="sections-stack" id="sectionsStack"></section>
+        </section>
+
+        <section class="view" data-view-panel="calculator">
+          <section class="calculator-grid">
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Yield Estimate</p>
+                  <h3>Estimate yield from a reference pool</h3>
+                </div>
+              </div>
+              <form id="calculatorForm" class="calculator-form"></form>
+            </article>
+
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Estimate results</p>
+                  <h3>Yield estimate</h3>
+                </div>
+              </div>
+              <div class="calculator-metrics" id="calculatorMetrics"></div>
+            </article>
+          </section>
+
+          <section class="calculator-grid token-grid">
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Token Calculator</p>
+                  <h3>Value assets, manual scenarios and liabilities</h3>
+                </div>
+              </div>
+              <form id="tokenCalculatorForm" class="calculator-form"></form>
+            </article>
+
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Portfolio Results</p>
+                  <h3>Net portfolio value</h3>
+                </div>
+              </div>
+              <div class="calculator-metrics" id="tokenCalculatorMetrics"></div>
+            </article>
+          </section>
+
+          <section class="panel calc-history-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">History</p>
+                <h3>Reference pool snapshots window</h3>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="history-table" id="historyTable"></table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal hidden" id="poolModal">
+      <div class="modal-backdrop" id="modalBackdrop"></div>
+      <section class="modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Pool detail</p>
+            <h3 id="modalPoolTitle">Pool</h3>
+            <p class="modal-subtitle" id="modalPoolSubtitle"></p>
+          </div>
+          <button class="modal-close" id="modalClose" type="button">Close</button>
+        </div>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">History</p>
+              <h3>All snapshots for pool</h3>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="history-table" id="modalHistoryTable"></table>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <input type="file" id="backupFileInput" accept=".json,application/json" class="hidden" />
+    <script src="./script.js"></script>
+  </body>
+</html>
