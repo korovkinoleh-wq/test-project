@@ -17,3 +17,6 @@
 - Создан Pages project `lp-analytics-test`.
 - Выполнен первый успешный online deploy.
 - Зафиксированы файлы `DEPLOY_WORKFLOW.md` и `DEPLOY_STATUS.md`.
+- Получен AI Studio export со Strategy formulas/spec.
+- Добавлен файл `STRATEGY_FORMULAS_SPEC.md` как официальный источник формул Strategy/Rebalance layer.
+- Архитектура проекта обновлена с выделением calculator engine, strategy layer, rebalance/liquidation engine и portfolio allocation layer.

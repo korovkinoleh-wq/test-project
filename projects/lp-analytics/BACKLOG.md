@@ -12,7 +12,8 @@
 - [ ] Уточнить reference liquidity в UI и модели
 - [ ] Добавить базовую validation для snapshots
 - [ ] Смягчить wording calculator UI до estimate language
-- [ ] Подготовить первый online testing deploy
+- [ ] Formalize Strategy layer from AI Studio export into project docs
+- [ ] Review STRATEGY_FORMULAS_SPEC.md for mathematical consistency and implementation boundaries
 
 ## Next
 

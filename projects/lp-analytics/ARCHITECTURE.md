@@ -7,8 +7,10 @@ Draft / to be filled
 
 - Snapshot ingestion / source layer
 - Data normalization layer
-- Calculation engine
+- Calculator engine
 - Strategy layer
+- Rebalance / liquidation risk engine
+- Portfolio allocation layer
 - User input layer / UI
 - Output / result presentation layer
 
