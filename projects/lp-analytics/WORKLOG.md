@@ -13,3 +13,7 @@
 - Выполнен review бесплатных вариантов хостинга для онлайн-тестирования.
 - Лучшей текущей платформой для тестового онлайн-деплоя признан Cloudflare Pages.
 - Созданы документы `CALCULATOR_REVIEW_2026-03-27.md`, `CALCULATOR_PATCH_PLAN.md`, `HOSTING_REVIEW_2026-03-27.md`.
+- Настроен рабочий GitHub -> Cloudflare Pages deploy contour для LP Analytics.
+- Создан Pages project `lp-analytics-test`.
+- Выполнен первый успешный online deploy.
+- Зафиксированы файлы `DEPLOY_WORKFLOW.md` и `DEPLOY_STATUS.md`.

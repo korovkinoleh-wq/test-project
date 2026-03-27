@@ -18,14 +18,16 @@ Review -> stabilization of Calculator v1
 - Зафиксирована спецификация Calculator v1 (`CALCULATOR_V1_SPEC.md`).
 - Выполнен review calculator logic и найден список конкретных проблем.
 - Выполнен review вариантов бесплатного хостинга для онлайн-тестирования.
+- Настроен рабочий deploy contour: GitHub + Cloudflare Pages + host-based deploy.
+- Выполнен первый успешный online deploy и подтверждено, что сайт открывается публично.
 
 ## What is next
 
-1. Зафиксировать Calculator v1 как simplified estimator model.
-2. Исправить AVAX data inconsistency.
-3. Добавить validation для user range width и snapshots.
-4. Уточнить reference liquidity и wording UI.
-5. Подготовить первый online testing deploy.
+1. Продолжить стабилизацию Calculator v1 после первого patch-pass.
+2. Проверить pair orientation / scale consistency по remaining pools.
+3. Уточнить reference liquidity model окончательно.
+4. Перейти к следующей продуктовой задаче по LP Analytics.
+5. При необходимости выпускать новые online deploy итерации через настроенный workflow.
 
 ## Current blockers
 
