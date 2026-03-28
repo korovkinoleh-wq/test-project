@@ -371,9 +371,6 @@ function validateBatchSeries(batches) {
     for (const pool of pools) {
       const prevTotal = Number(prev.totals?.[pool.id]);
       const currTotal = Number(curr.totals?.[pool.id]);
-      if (currTotal < prevTotal) {
-        return { valid: false, message: `Snapshot totals cannot decrease for ${pool.asset} / ${pool.network}.`, batches: sorted };
-      }
       if (prevTotal > 0) {
         const deltaPct = ((currTotal - prevTotal) / prevTotal) * 100;
         if (deltaPct > MAX_REASONABLE_DELTA_PCT) {
