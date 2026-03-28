@@ -981,3 +981,43 @@ body {
   border: 1px solid rgba(255, 180, 84, 0.24);
   background: rgba(255, 180, 84, 0.08);
 }
+
+.strategy-fg-widget {
+  min-width: 320px;
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-fg-meta strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.05rem;
+}
+
+.strategy-fg-scale {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b73a3a 0%, #d57a32 25%, #c8b14a 50%, #59a95b 75%, #2fc46b 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: visible;
+}
+
+.strategy-fg-marker {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #0f1724;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+}
+
+.strategy-fg-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--muted);
+}

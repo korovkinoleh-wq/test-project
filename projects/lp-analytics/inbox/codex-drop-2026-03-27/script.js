@@ -1706,7 +1706,7 @@ function renderFearGreedBlock() {
   const block = document.getElementById("fearGreedBlock");
   if (!block) return;
 
-  const value = fearGreedState.value ?? "—";
+  const value = Number(fearGreedState.value ?? 0);
   const classificationMap = {
     "Extreme Fear": "Крайний страх",
     "Fear": "Страх",
@@ -1717,13 +1717,23 @@ function renderFearGreedBlock() {
   const classification = classificationMap[fearGreedState.classification] || fearGreedState.classification || "нет данных";
 
   block.innerHTML = `
-    <div class="strategy-fg-inline">
-      <span class="field-hint">Индекс страха и жадности:</span>
-      <strong>${value} / ${classification}</strong>
-      <span class="field-hint">Источник: ${fearGreedState.source}</span>
+    <div class="strategy-fg-widget">
+      <div class="strategy-fg-meta">
+        <span class="field-hint">Индекс страха и жадности</span>
+        <strong>${value} / ${classification}</strong>
+      </div>
+      <div class="strategy-fg-scale">
+        <div class="strategy-fg-marker" style="left: ${Math.max(0, Math.min(100, value))}%;"></div>
+      </div>
+      <div class="strategy-fg-labels">
+        <span>Страх</span>
+        <span>Нейтрально</span>
+        <span>Жадность</span>
+      </div>
     </div>
   `;
 }
+
 
 
 function renderStrategyCalibrationPools() {
