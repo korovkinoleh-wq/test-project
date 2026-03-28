@@ -78,6 +78,30 @@ let marketPrices = {
   updatedAt: null,
   source: "Pool fallback",
 };
+let strategyManualState = {
+  capital: 1000,
+  width: 400,
+  assetPct: 5,
+  usdcPct: 95,
+  calibration: {
+    ethereum: { enabled: true, poolId: "eth-base-aerodrom", manualPriceMode: false, manualPrice: "" },
+    bitcoin: { enabled: true, poolId: "wbtc-arbitrum-uniswap", manualPriceMode: false, manualPrice: "" },
+    avalanche: { enabled: false, poolId: "avax-uniswap", manualPriceMode: false, manualPrice: "" },
+  },
+  allocations: {
+    ethereum: 30,
+    bitcoin: 70,
+    avalanche: 0,
+  },
+};
+
+let fearGreedState = {
+  value: null,
+  classification: null,
+  updatedAt: null,
+  source: "Alternative.me",
+};
+
 let tokenCalculatorState = {
   BTC: { amount: 0, mode: "auto", manualPrice: "" },
   ETH: { amount: 0, mode: "auto", manualPrice: "" },
@@ -635,6 +659,12 @@ function resetBatchDraft() {
 
 function getBatchOptionLabel(batch, index) {
   return `#${index + 1} - ${formatDateTime(batch.snapshotAt)}`;
+}
+
+
+
+function getPoolDisplayOption(pool) {
+  return `${pool.asset} | ${pool.dex} | ${pool.network} | ${formatNumber(pool.feePct, 3)}%`;
 }
 
 function getPoolDisplayName(state) {
@@ -1339,10 +1369,40 @@ function renderModal() {
   `;
 }
 
+
+async function fetchFearGreedIndex() {
+  try {
+    const response = await fetch("/api/fear-greed");
+    if (!response.ok) throw new Error("Fear & Greed request failed");
+    const data = await response.json();
+    const item = data?.data?.[0];
+    if (!item) throw new Error("Fear & Greed payload missing");
+
+    fearGreedState = {
+      value: Number(item.value),
+      classification: item.value_classification,
+      updatedAt: new Date().toISOString(),
+      source: "Alternative.me",
+    };
+
+    if (document.querySelector('[data-view-panel="strategy"].view-active')) {
+      renderFearGreedBlock();
+    }
+  } catch {
+    if (fearGreedState.value === null) {
+      fearGreedState = { value: "—", classification: "нет данных", updatedAt: null, source: "Alternative.me" };
+    }
+  }
+}
+
 function renderAll() {
   renderSummary();
   renderSections();
   renderCalculator();
+  renderFearGreedBlock();
+  renderStrategyCalibrationPools();
+  renderStrategyPortfolio();
+  renderStrategyManual();
   if (modalPoolId) {
     renderModal();
   }
@@ -1373,6 +1433,412 @@ backupFileInput.addEventListener("change", (event) => {
 });
 seedMarketPricesFromPools();
 fetchBinancePrices();
+fetchFearGreedIndex();
 setInterval(fetchBinancePrices, 60000);
+setInterval(fetchFearGreedIndex, 300000);
 resetBatchDraft();
 renderAll();
+
+
+function formatTokenAmount(value, digits = 6) {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function validateStrategyManualInputs(input) {
+  const capital = Number(input.capital);
+  const currentPrice = Number(input.currentPrice);
+  const width = Number(input.width);
+  const assetPct = Number(input.assetPct);
+  const usdcPct = Number(input.usdcPct);
+
+  if (!Number.isFinite(capital) || capital <= 0) return { valid: false, message: "Капитал должен быть больше 0." };
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return { valid: false, message: "Текущая цена должна быть больше 0." };
+  if (!Number.isFinite(width) || width <= 0) return { valid: false, message: "Ширина диапазона должна быть больше 0." };
+  if (!Number.isFinite(assetPct) || assetPct < 0) return { valid: false, message: "Доля актива % must be 0 or greater." };
+  if (!Number.isFinite(usdcPct) || usdcPct < 0) return { valid: false, message: "Доля Доля USDC должна быть не меньше 0." };
+  if (Math.abs(assetPct + usdcPct - 100) > 1e-9) return { valid: false, message: "Доля актива % and Доля USDC % must sum to 100." };
+
+  const downside = width * (usdcPct / 100);
+  const lowerBound = currentPrice - downside;
+  if (!Number.isFinite(lowerBound) || lowerBound <= 0) return { valid: false, message: "Нижняя граница должна оставаться выше 0." };
+
+  return { valid: true };
+}
+
+function calculateStrategyManualCore(input) {
+  const validation = validateStrategyManualInputs(input);
+  if (!validation.valid) {
+    throw new Error(validation.message);
+  }
+
+  const capital = Number(input.capital);
+  const currentPrice = Number(input.currentPrice);
+  const width = Number(input.width);
+  const assetPct = Number(input.assetPct);
+  const usdcPct = Number(input.usdcPct);
+
+  const downside = width * (usdcPct / 100);
+  const upside = width * (assetPct / 100);
+  const lowerBound = currentPrice - downside;
+  const upperBound = currentPrice + upside;
+  const initialAssetUnits = (capital * (assetPct / 100)) / currentPrice;
+  const boughtAssetUnitsAtLower = (capital * (usdcPct / 100)) / (Math.sqrt(lowerBound) * Math.sqrt(currentPrice));
+  const totalAssetUnitsAtLower = initialAssetUnits + boughtAssetUnitsAtLower;
+  const pnlAtLower = (totalAssetUnitsAtLower * lowerBound) - capital;
+
+  return {
+    lowerBound,
+    upperBound,
+    initialAssetUnits,
+    boughtAssetUnitsAtLower,
+    totalAssetUnitsAtLower,
+    pnlAtLower,
+  };
+}
+
+function renderStrategyManualMetrics(result) {
+  const strategyManualMetrics = document.getElementById("strategyManualMetrics");
+  strategyManualMetrics.innerHTML = [
+    { label: "Нижняя граница", value: formatMoney(result.lowerBound, 2), hero: true },
+    { label: "Верхняя граница", value: formatMoney(result.upperBound, 2), heroAccent: true },
+    { label: "Стартовое количество актива", value: formatTokenAmount(result.initialAssetUnits, 8) },
+    { label: "Купленный актив на нижней границе", value: formatTokenAmount(result.boughtAssetUnitsAtLower, 8) },
+    { label: "Итого актива на нижней границе", value: formatTokenAmount(result.totalAssetUnitsAtLower, 8) },
+    { label: "PnL на нижней границе", value: formatSignedMoney(result.pnlAtLower, 2) },
+  ]
+    .map(
+      (metric) => `
+    <div class="metric-card ${metric.hero ? "hero" : ""} ${metric.heroAccent ? "hero-accent" : ""}">
+      <span>${metric.label}</span>
+      <strong>${metric.value}</strong>
+    </div>
+  `
+    )
+    .join("");
+}
+
+function renderStrategyPortfolio() {
+  const form = document.getElementById("strategyPortfolioForm");
+  if (!form) return;
+
+  rebalanceStrategyAllocations();
+  const keys = strategySelectedKeys();
+
+  form.innerHTML = `
+    <label class="field">
+      <span class="input-label">Общий капитал (USD)</span>
+      <input class="calculator-input" type="number" step="any" min="0" name="capital" value="${strategyManualState.capital}" />
+    </label>
+    ${keys.map((key) => {
+      const pool = getStrategyPoolForKey(key);
+      const price = getStrategyPriceForKey(key);
+      const alloc = strategyManualState.allocations[key] || 0;
+      const usd = strategyManualState.capital * (alloc / 100);
+      return `
+        <div class="token-row" style="grid-template-columns: 120px repeat(3, minmax(0, 1fr));">
+          <div class="token-symbol">${key === "ethereum" ? "ETH" : key === "bitcoin" ? "BTC" : "AVAX"}</div>
+          <label class="field">
+            <span class="input-label">Аллокация %</span>
+            <input class="calculator-input" type="number" step="any" min="0" max="100" data-allocation-input="${key}" value="${alloc}" />
+          </label>
+          <label class="field">
+            <span class="input-label">Цена</span>
+            <input class="calculator-input" type="number" step="any" min="0" data-price-input="${key}" value="${price}" ${strategyManualState.calibration[key].manualPriceMode ? "" : "disabled"} />
+          </label>
+          <div class="token-inline-note">
+            ${pool ? `${getPoolDisplayOption(pool)}` : "Pool not selected"}<br/>
+            В USD: ${formatMoney(usd, 2)}<br/>
+            <label style="display:inline-flex; gap:6px; align-items:center; margin-top:6px;">
+              <input type="checkbox" data-manual-price-toggle="${key}" ${strategyManualState.calibration[key].manualPriceMode ? "checked" : ""} />
+              <span>Manual price</span>
+            </label>
+          </div>
+        </div>
+      `;
+    }).join("")}
+  `;
+
+  form.querySelector('[name="capital"]').addEventListener('input', (event) => {
+    strategyManualState.capital = Number(event.target.value) || 0;
+    renderAll();
+  });
+
+  form.querySelectorAll('[data-allocation-input]').forEach((el) => {
+    el.addEventListener('input', (event) => {
+      const key = event.target.dataset.allocationInput;
+      strategyManualState.allocations[key] = Number(event.target.value) || 0;
+      rebalanceStrategyAllocations(key);
+      renderAll();
+    });
+  });
+
+  form.querySelectorAll('[data-manual-price-toggle]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.manualPriceToggle;
+      strategyManualState.calibration[key].manualPriceMode = event.target.checked;
+      if (!event.target.checked) strategyManualState.calibration[key].manualPrice = "";
+      renderAll();
+    });
+  });
+
+  form.querySelectorAll('[data-price-input]').forEach((el) => {
+    el.addEventListener('input', (event) => {
+      const key = event.target.dataset.priceInput;
+      strategyManualState.calibration[key].manualPrice = event.target.value;
+    });
+  });
+}
+
+function renderStrategyManual() {
+  const strategyManualForm = document.getElementById("strategyManualForm");
+  if (!strategyManualForm) return;
+
+  const keys = strategySelectedKeys();
+  const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
+  const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
+  const selectedPool = getStrategySelectedPool();
+  const currentPrice = selectedPool ? getCurrentMarketPriceForPool(selectedPool) : 0;
+
+  strategyManualForm.innerHTML = `
+    <div class="field-hint warning-note">Сейчас это только ручное ядро стратегии. Auto Split и логика плеча пока не включены.</div>
+    <div class="field-row">
+      <label class="field">
+        <span class="input-label">Ширина диапазона</span>
+        <input class="calculator-input" type="number" step="any" min="0" name="width" value="${strategyManualState.width}" />
+      </label>
+      <label class="field">
+        <span class="input-label">Доля актива %</span>
+        <input class="calculator-input" type="number" step="any" min="0" max="100" name="assetPct" value="${strategyManualState.assetPct}" />
+      </label>
+    </div>
+    <label class="field">
+      <span class="input-label">Доля USDC %</span>
+      <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="${strategyManualState.usdcPct}" />
+    </label>
+    ${keys.map((key) => {
+      const pool = getStrategyPoolForKey(key);
+      const allocPct = strategyManualState.allocations[key] || 0;
+      const poolCapital = strategyManualState.capital * (allocPct / 100);
+      const poolAssetUsd = poolCapital * (strategyManualState.assetPct / 100);
+      const poolUsdcUsd = poolCapital * (strategyManualState.usdcPct / 100);
+      return `
+        <div class="token-row" style="grid-template-columns: 120px 1fr;">
+          <div class="token-symbol">${key === "ethereum" ? "ETH" : key === "bitcoin" ? "BTC" : "AVAX"}</div>
+          <div class="token-inline-note">
+            ${pool ? getPoolDisplayOption(pool) : "Pool not selected"}<br/>
+            Аллокация: ${formatNumber(allocPct, 2)}% / ${formatMoney(poolCapital, 2)}<br/>
+            Актив: ${formatMoney(poolAssetUsd, 2)} | USDC: ${formatMoney(poolUsdcUsd, 2)}
+          </div>
+        </div>
+      `;
+    }).join("")}
+    <div class="field-hint">Здесь показывается математика накопления на нижней границе, а не полная симуляция рыночного пути.</div>
+    <div class="calculator-actions">
+      <button class="calculator-button" type="submit">Рассчитать стратегию</button>
+    </div>
+  `;
+
+  const validation = validateStrategyManualInputs({
+    capital: strategyManualState.capital,
+    currentPrice,
+    width: strategyManualState.width,
+    assetPct: strategyManualState.assetPct,
+    usdcPct: strategyManualState.usdcPct,
+  });
+  if (validation.valid) {
+    renderStrategyManualMetrics(calculateStrategyManualCore({
+      capital: strategyManualState.capital,
+      currentPrice,
+      width: strategyManualState.width,
+      assetPct: strategyManualState.assetPct,
+      usdcPct: strategyManualState.usdcPct,
+    }));
+  }
+
+  strategyManualForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(strategyManualForm);
+    strategyManualState.width = Number(form.get("width"));
+    strategyManualState.assetPct = Number(form.get("assetPct"));
+    strategyManualState.usdcPct = Number(form.get("usdcPct"));
+
+    const input = {
+      capital: strategyManualState.capital,
+      currentPrice,
+      width: strategyManualState.width,
+      assetPct: strategyManualState.assetPct,
+      usdcPct: strategyManualState.usdcPct,
+    };
+
+    const validation = validateStrategyManualInputs(input);
+    if (!validation.valid) {
+      showToast(validation.message);
+      return;
+    }
+
+    renderStrategyManualMetrics(calculateStrategyManualCore(input));
+    renderStrategyManual();
+  });
+}
+
+
+function getStrategyPoolsByEcosystem(ecosystem) {
+  return getAllPoolStates().filter((state) => state.ecosystem === ecosystem);
+}
+
+function getStrategySelectedPool() {
+  const keys = strategySelectedKeys();
+  const firstKey = keys[0] || "ethereum";
+  return getStrategyPoolForKey(firstKey) || getAllPoolStates()[0];
+}
+
+function getStrategyCurrentPrice(selectedPool) {
+  return getCurrentMarketPriceForPool(selectedPool);
+}
+
+function renderFearGreedBlock() {
+  const block = document.getElementById("fearGreedBlock");
+  if (!block) return;
+
+  const value = fearGreedState.value ?? "—";
+  const classificationMap = {
+    "Extreme Fear": "Крайний страх",
+    "Fear": "Страх",
+    "Neutral": "Нейтрально",
+    "Greed": "Жадность",
+    "Extreme Greed": "Крайняя жадность",
+  };
+  const classification = classificationMap[fearGreedState.classification] || fearGreedState.classification || "нет данных";
+
+  block.innerHTML = `
+    <div class="strategy-fg-inline">
+      <span class="field-hint">Индекс страха и жадности:</span>
+      <strong>${value} / ${classification}</strong>
+      <span class="field-hint">Источник: ${fearGreedState.source}</span>
+    </div>
+  `;
+}
+
+
+function renderStrategyCalibrationPools() {
+  const root = document.getElementById("strategyCalibrationPools");
+  if (!root) return;
+
+  const labels = { ethereum: "ETH", bitcoin: "BTC", avalanche: "AVAX" };
+  root.innerHTML = ["ethereum", "bitcoin", "avalanche"].map((key) => {
+    const cfg = strategyManualState.calibration[key];
+    const pools = getAllPoolStates().filter((state) => state.ecosystem === key);
+    const selected = pools.find((pool) => pool.id === cfg.poolId) || pools[0];
+    if (selected) cfg.poolId = selected.id;
+    return `
+      <article class="strategy-calibration-card">
+        <label class="field" style="grid-template-columns: auto 1fr; align-items: center; gap: 10px;">
+          <input type="checkbox" data-calibration-enabled="${key}" ${cfg.enabled ? "checked" : ""} />
+          <span class="input-label">${labels[key]} pool включён</span>
+        </label>
+        <label class="field">
+          <span class="input-label">${labels[key]} reference pool</span>
+          <select class="calculator-select" data-calibration-pool="${key}">
+            ${pools.map((pool) => `<option value="${pool.id}" ${pool.id === cfg.poolId ? "selected" : ""}>${getPoolDisplayOption(pool)}</option>`).join("")}
+          </select>
+        </label>
+        <p class="field-hint">Ref APR: ${selected ? formatNumber(selected.apr, 2) : "0.00"}%</p>
+      </article>
+    `;
+  }).join("");
+
+  root.querySelectorAll('[data-calibration-enabled]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.calibrationEnabled;
+      strategyManualState.calibration[key].enabled = event.target.checked;
+      rebalanceStrategyAllocations();
+      renderAll();
+    });
+  });
+
+  root.querySelectorAll('[data-calibration-pool]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.calibrationPool;
+      strategyManualState.calibration[key].poolId = event.target.value;
+      renderAll();
+    });
+  });
+}
+
+function strategySelectedKeys() {
+  return ["ethereum", "bitcoin", "avalanche"].filter((key) => strategyManualState.calibration[key].enabled);
+}
+
+function getStrategyPoolForKey(key) {
+  return getAllPoolStates().find((state) => state.id === strategyManualState.calibration[key].poolId) || null;
+}
+
+function getStrategyPriceForKey(key) {
+  const cfg = strategyManualState.calibration[key];
+  const pool = getStrategyPoolForKey(key);
+  if (cfg.manualPriceMode && Number(cfg.manualPrice) > 0) return Number(cfg.manualPrice);
+  return pool ? getCurrentMarketPriceForPool(pool) : 0;
+}
+
+function rebalanceStrategyAllocations(changedKey = null) {
+  const keys = strategySelectedKeys();
+  if (!keys.length) return;
+
+  for (const key of ["ethereum", "bitcoin", "avalanche"]) {
+    if (!keys.includes(key)) strategyManualState.allocations[key] = 0;
+  }
+
+  if (!changedKey || !keys.includes(changedKey)) {
+    if (keys.length === 1) {
+      strategyManualState.allocations[keys[0]] = 100;
+      return;
+    }
+    if (keys.length === 2) {
+      if (keys.includes("ethereum") && keys.includes("bitcoin")) {
+        strategyManualState.allocations.ethereum = 30;
+        strategyManualState.allocations.bitcoin = 70;
+      } else if (keys.includes("ethereum") && keys.includes("avalanche")) {
+        strategyManualState.allocations.ethereum = 99;
+        strategyManualState.allocations.avalanche = 1;
+      } else if (keys.includes("bitcoin") && keys.includes("avalanche")) {
+        strategyManualState.allocations.bitcoin = 99;
+        strategyManualState.allocations.avalanche = 1;
+      }
+      return;
+    }
+    if (keys.length === 3) {
+      strategyManualState.allocations.ethereum = 30;
+      strategyManualState.allocations.bitcoin = 69;
+      strategyManualState.allocations.avalanche = 1;
+      return;
+    }
+  }
+
+  const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
+  strategyManualState.allocations[changedKey] = changedValue;
+  const others = keys.filter((k) => k !== changedKey);
+  const remainder = Number((100 - changedValue).toFixed(2));
+
+  if (others.length === 1) {
+    strategyManualState.allocations[others[0]] = remainder;
+    return;
+  }
+
+  if (others.length === 2) {
+    const [first, second] = others;
+    const currentFirst = Number(strategyManualState.allocations[first]) || 0;
+    const currentSecond = Number(strategyManualState.allocations[second]) || 0;
+    const total = currentFirst + currentSecond;
+    if (total <= 0) {
+      strategyManualState.allocations[first] = remainder;
+      strategyManualState.allocations[second] = 0;
+    } else {
+      const firstValue = Number(((currentFirst / total) * remainder).toFixed(2));
+      strategyManualState.allocations[first] = firstValue;
+      strategyManualState.allocations[second] = Number((remainder - firstValue).toFixed(2));
+    }
+  }
+}
