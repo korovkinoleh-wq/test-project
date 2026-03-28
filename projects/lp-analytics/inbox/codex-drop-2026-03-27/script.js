@@ -79,14 +79,20 @@ let marketPrices = {
   source: "Pool fallback",
 };
 let strategyManualState = {
-  ecosystem: "ethereum",
-  poolId: "eth-base-aerodrom",
-  manualPriceMode: false,
-  manualPrice: "",
   capital: 1000,
   width: 400,
   assetPct: 5,
   usdcPct: 95,
+  calibration: {
+    ethereum: { enabled: true, poolId: "eth-base-aerodrom", manualPriceMode: false, manualPrice: "" },
+    bitcoin: { enabled: true, poolId: "wbtc-arbitrum-uniswap", manualPriceMode: false, manualPrice: "" },
+    avalanche: { enabled: false, poolId: "avax-uniswap", manualPriceMode: false, manualPrice: "" },
+  },
+  allocations: {
+    ethereum: 30,
+    bitcoin: 70,
+    avalanche: 0,
+  },
 };
 
 let tokenCalculatorState = {
@@ -1477,70 +1483,71 @@ function renderStrategyPortfolio() {
   const form = document.getElementById("strategyPortfolioForm");
   if (!form) return;
 
-  const selectedPool = getStrategySelectedPool();
-  const autoPrice = selectedPool ? getCurrentMarketPriceForPool(selectedPool) : 0;
-  const currentPrice = strategyManualState.manualPriceMode && Number(strategyManualState.manualPrice) > 0
-    ? Number(strategyManualState.manualPrice)
-    : autoPrice;
+  rebalanceStrategyAllocations();
+  const keys = strategySelectedKeys();
 
   form.innerHTML = `
-    <div class="field-row">
-      <label class="field">
-        <span class="input-label">Экосистема</span>
-        <select class="calculator-select" name="ecosystem">
-          <option value="ethereum" ${strategyManualState.ecosystem === "ethereum" ? "selected" : ""}>Ethereum</option>
-          <option value="bitcoin" ${strategyManualState.ecosystem === "bitcoin" ? "selected" : ""}>Bitcoin</option>
-          <option value="avalanche" ${strategyManualState.ecosystem === "avalanche" ? "selected" : ""}>Avalanche</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="input-label">Эталонный пул</span>
-        <select class="calculator-select" name="poolId">
-          ${getStrategyPoolsByEcosystem(strategyManualState.ecosystem).map((pool) => `<option value="${pool.id}" ${pool.id === strategyManualState.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
-        </select>
-      </label>
-    </div>
-    <div class="field-row">
-      <label class="field">
-        <span class="input-label">Общий капитал (USD)</span>
-        <input class="calculator-input" type="number" step="any" min="0" name="capital" value="${strategyManualState.capital}" />
-      </label>
-      <label class="field">
-        <span class="input-label">Текущая цена (USD)</span>
-        <input class="calculator-input" type="number" step="any" min="0" name="currentPrice" value="${currentPrice}" ${strategyManualState.manualPriceMode ? "" : "disabled"} />
-      </label>
-    </div>
-    <label class="field" style="grid-template-columns: auto 1fr; align-items: center; gap: 10px;">
-      <input type="checkbox" name="manualPriceMode" ${strategyManualState.manualPriceMode ? "checked" : ""} />
-      <span class="input-label">Ввести цену вручную</span>
+    <label class="field">
+      <span class="input-label">Общий капитал (USD)</span>
+      <input class="calculator-input" type="number" step="any" min="0" name="capital" value="${strategyManualState.capital}" />
     </label>
-    <div class="field-hint">По умолчанию цена берётся из выбранного эталонного пула. Ручной режим нужен для будущих сценарных симуляций.</div>
+    ${keys.map((key) => {
+      const pool = getStrategyPoolForKey(key);
+      const price = getStrategyPriceForKey(key);
+      const alloc = strategyManualState.allocations[key] || 0;
+      const usd = strategyManualState.capital * (alloc / 100);
+      return `
+        <div class="token-row" style="grid-template-columns: 120px repeat(3, minmax(0, 1fr));">
+          <div class="token-symbol">${key === "ethereum" ? "ETH" : key === "bitcoin" ? "BTC" : "AVAX"}</div>
+          <label class="field">
+            <span class="input-label">Аллокация %</span>
+            <input class="calculator-input" type="number" step="any" min="0" max="100" data-allocation-input="${key}" value="${alloc}" />
+          </label>
+          <label class="field">
+            <span class="input-label">Цена</span>
+            <input class="calculator-input" type="number" step="any" min="0" data-price-input="${key}" value="${price}" ${strategyManualState.calibration[key].manualPriceMode ? "" : "disabled"} />
+          </label>
+          <div class="token-inline-note">
+            ${pool ? `${pool.asset} | ${pool.dex} | ${pool.network}` : "Pool not selected"}<br/>
+            В USD: ${formatMoney(usd, 2)}<br/>
+            <label style="display:inline-flex; gap:6px; align-items:center; margin-top:6px;">
+              <input type="checkbox" data-manual-price-toggle="${key}" ${strategyManualState.calibration[key].manualPriceMode ? "checked" : ""} />
+              <span>Manual price</span>
+            </label>
+          </div>
+        </div>
+      `;
+    }).join("")}
   `;
 
-  form.querySelector('[name="ecosystem"]').addEventListener("change", (event) => {
-    strategyManualState.ecosystem = event.target.value;
-    const nextPools = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
-    strategyManualState.poolId = nextPools[0]?.id || strategyManualState.poolId;
-    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
+  form.querySelector('[name="capital"]').addEventListener('input', (event) => {
+    strategyManualState.capital = Number(event.target.value) || 0;
     renderStrategyManual();
   });
 
-  form.querySelector('[name="poolId"]').addEventListener("change", (event) => {
-    strategyManualState.poolId = event.target.value;
-    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
-    renderStrategyManual();
+  form.querySelectorAll('[data-allocation-input]').forEach((el) => {
+    el.addEventListener('input', (event) => {
+      const key = event.target.dataset.allocationInput;
+      strategyManualState.allocations[key] = Number(event.target.value) || 0;
+      rebalanceStrategyAllocations(key);
+      renderStrategyManual();
+    });
   });
 
-  form.querySelector('[name="manualPriceMode"]').addEventListener("change", (event) => {
-    strategyManualState.manualPriceMode = event.target.checked;
-    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
-    renderStrategyManual();
+  form.querySelectorAll('[data-manual-price-toggle]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.manualPriceToggle;
+      strategyManualState.calibration[key].manualPriceMode = event.target.checked;
+      if (!event.target.checked) strategyManualState.calibration[key].manualPrice = "";
+      renderStrategyManual();
+    });
   });
 
-  form.addEventListener("change", () => {
-    const data = new FormData(form);
-    strategyManualState.capital = Number(data.get("capital"));
-    strategyManualState.manualPrice = String(data.get("currentPrice") || "");
+  form.querySelectorAll('[data-price-input]').forEach((el) => {
+    el.addEventListener('input', (event) => {
+      const key = event.target.dataset.priceInput;
+      strategyManualState.calibration[key].manualPrice = event.target.value;
+    });
   });
 }
 
@@ -1572,7 +1579,7 @@ function renderStrategyManual() {
       <span class="input-label">Доля USDC %</span>
       <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="${strategyManualState.usdcPct}" />
     </label>
-    <div class="field-hint">Разбивка капитала: Актив — ${formatMoney(assetUsd, 2)} | USDC — ${formatMoney(usdcUsd, 2)}</div>
+    <div class="field-hint">Разбивка диапазона по умолчанию: Актив — ${formatMoney(assetUsd, 2)} | USDC — ${formatMoney(usdcUsd, 2)}</div>
     <div class="field-hint">Здесь показывается математика накопления на нижней границе, а не полная симуляция рыночного пути.</div>
     <div class="calculator-actions">
       <button class="calculator-button" type="submit">Рассчитать стратегию</button>
@@ -1646,10 +1653,10 @@ function renderFearGreedBlock() {
   if (!block) return;
 
   block.innerHTML = `
-    <div class="strategy-fg-meter">
-      <span>Текущий режим рынка</span>
+    <div class="strategy-fg-inline">
+      <span class="field-hint">Индекс страха и жадности:</span>
       <strong>62 / Жадность</strong>
-      <p class="field-hint">Пока это временный индикатор-заглушка. Позже подключим реальный источник данных.</p>
+      <span class="field-hint">(временная заглушка до подключения real source)</span>
     </div>
   `;
 }
@@ -1676,4 +1683,69 @@ function renderStrategyCalibrationPools() {
       </article>
     `)
     .join("");
+}
+
+
+function strategySelectedKeys() {
+  return ["ethereum", "bitcoin", "avalanche"].filter((key) => strategyManualState.calibration[key].enabled);
+}
+
+function getStrategyPoolForKey(key) {
+  return getAllPoolStates().find((state) => state.id === strategyManualState.calibration[key].poolId) || null;
+}
+
+function getStrategyPriceForKey(key) {
+  const cfg = strategyManualState.calibration[key];
+  const pool = getStrategyPoolForKey(key);
+  if (cfg.manualPriceMode && Number(cfg.manualPrice) > 0) return Number(cfg.manualPrice);
+  return pool ? getCurrentMarketPriceForPool(pool) : 0;
+}
+
+function rebalanceStrategyAllocations(changedKey = null) {
+  const keys = strategySelectedKeys();
+  if (!keys.length) return;
+
+  for (const key of ["ethereum", "bitcoin", "avalanche"]) {
+    if (!keys.includes(key)) strategyManualState.allocations[key] = 0;
+  }
+
+  if (changedKey && keys.includes(changedKey)) {
+    const otherKeys = keys.filter((k) => k !== changedKey);
+    const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
+    strategyManualState.allocations[changedKey] = changedValue;
+    let remainder = 100 - changedValue;
+    if (otherKeys.length === 1) {
+      strategyManualState.allocations[otherKeys[0]] = remainder;
+      return;
+    }
+    if (otherKeys.length > 1) {
+      const currentOtherSum = otherKeys.reduce((sum, k) => sum + (Number(strategyManualState.allocations[k]) || 0), 0);
+      if (currentOtherSum <= 0) {
+        const base = Math.floor((remainder / otherKeys.length) * 100) / 100;
+        let used = 0;
+        otherKeys.forEach((k, idx) => {
+          const value = idx === otherKeys.length - 1 ? Number((remainder - used).toFixed(2)) : base;
+          strategyManualState.allocations[k] = value;
+          used += value;
+        });
+      } else {
+        let used = 0;
+        otherKeys.forEach((k, idx) => {
+          const share = (Number(strategyManualState.allocations[k]) || 0) / currentOtherSum;
+          const value = idx === otherKeys.length - 1 ? Number((remainder - used).toFixed(2)) : Number((remainder * share).toFixed(2));
+          strategyManualState.allocations[k] = value;
+          used += value;
+        });
+      }
+      return;
+    }
+  }
+
+  if (keys.length === 1) {
+    strategyManualState.allocations[keys[0]] = 100;
+  } else if (keys.length === 2) {
+    const active = keys.map((k) => Number(strategyManualState.allocations[k]) || 0);
+    if (active[0] === 0 and active[1] === 0):
+      pass
+  }
 }
