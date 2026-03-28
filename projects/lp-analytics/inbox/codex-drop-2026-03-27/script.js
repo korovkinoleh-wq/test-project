@@ -1528,7 +1528,7 @@ function renderStrategyPortfolio() {
 
   form.querySelector('[name="capital"]').addEventListener('input', (event) => {
     strategyManualState.capital = Number(event.target.value) || 0;
-    renderStrategyManual();
+    renderAll();
   });
 
   form.querySelectorAll('[data-allocation-input]').forEach((el) => {
@@ -1536,7 +1536,7 @@ function renderStrategyPortfolio() {
       const key = event.target.dataset.allocationInput;
       strategyManualState.allocations[key] = Number(event.target.value) || 0;
       rebalanceStrategyAllocations(key);
-      renderStrategyManual();
+      renderAll();
     });
   });
 
@@ -1545,7 +1545,7 @@ function renderStrategyPortfolio() {
       const key = event.target.dataset.manualPriceToggle;
       strategyManualState.calibration[key].manualPriceMode = event.target.checked;
       if (!event.target.checked) strategyManualState.calibration[key].manualPrice = "";
-      renderStrategyManual();
+      renderAll();
     });
   });
 
@@ -1708,12 +1708,8 @@ function renderStrategyCalibrationPools() {
     el.addEventListener('change', (event) => {
       const key = event.target.dataset.calibrationEnabled;
       strategyManualState.calibration[key].enabled = event.target.checked;
-      if (key === 'avalanche' && event.target.checked && strategyManualState.allocations.avalanche === 0) {
-        strategyManualState.allocations.avalanche = 1;
-        strategyManualState.allocations.bitcoin = Math.max(0, strategyManualState.allocations.bitcoin - 1);
-      }
       rebalanceStrategyAllocations();
-      renderStrategyManual();
+      renderAll();
     });
   });
 
@@ -1721,7 +1717,7 @@ function renderStrategyCalibrationPools() {
     el.addEventListener('change', (event) => {
       const key = event.target.dataset.calibrationPool;
       strategyManualState.calibration[key].poolId = event.target.value;
-      renderStrategyManual();
+      renderAll();
     });
   });
 }
@@ -1746,17 +1742,14 @@ function rebalanceStrategyAllocations(changedKey = null) {
   if (!keys.length) return;
 
   for (const key of ["ethereum", "bitcoin", "avalanche"]) {
-    if (!keys.includes(key)) {
-      strategyManualState.allocations[key] = 0;
-    }
-  }
-
-  if (keys.length === 1) {
-    strategyManualState.allocations[keys[0]] = 100;
-    return;
+    if (!keys.includes(key)) strategyManualState.allocations[key] = 0;
   }
 
   if (!changedKey || !keys.includes(changedKey)) {
+    if (keys.length === 1) {
+      strategyManualState.allocations[keys[0]] = 100;
+      return;
+    }
     if (keys.length === 2) {
       if (keys.includes("ethereum") && keys.includes("bitcoin")) {
         strategyManualState.allocations.ethereum = 30;
@@ -1764,13 +1757,12 @@ function rebalanceStrategyAllocations(changedKey = null) {
       } else if (keys.includes("ethereum") && keys.includes("avalanche")) {
         strategyManualState.allocations.ethereum = 99;
         strategyManualState.allocations.avalanche = 1;
-      } else {
+      } else if (keys.includes("bitcoin") && keys.includes("avalanche")) {
         strategyManualState.allocations.bitcoin = 99;
         strategyManualState.allocations.avalanche = 1;
       }
       return;
     }
-
     if (keys.length === 3) {
       strategyManualState.allocations.ethereum = 30;
       strategyManualState.allocations.bitcoin = 69;
@@ -1782,7 +1774,7 @@ function rebalanceStrategyAllocations(changedKey = null) {
   const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
   strategyManualState.allocations[changedKey] = changedValue;
   const others = keys.filter((k) => k !== changedKey);
-  let remainder = Number((100 - changedValue).toFixed(2));
+  const remainder = Number((100 - changedValue).toFixed(2));
 
   if (others.length === 1) {
     strategyManualState.allocations[others[0]] = remainder;
@@ -1791,10 +1783,9 @@ function rebalanceStrategyAllocations(changedKey = null) {
 
   if (others.length === 2) {
     const [first, second] = others;
-    const currentSecond = Number(strategyManualState.allocations[second]) || 0;
     const currentFirst = Number(strategyManualState.allocations[first]) || 0;
+    const currentSecond = Number(strategyManualState.allocations[second]) || 0;
     const total = currentFirst + currentSecond;
-
     if (total <= 0) {
       strategyManualState.allocations[first] = remainder;
       strategyManualState.allocations[second] = 0;
