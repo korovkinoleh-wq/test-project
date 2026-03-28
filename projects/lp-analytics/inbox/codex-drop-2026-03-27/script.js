@@ -95,6 +95,13 @@ let strategyManualState = {
   },
 };
 
+let fearGreedState = {
+  value: null,
+  classification: null,
+  updatedAt: null,
+  source: "Alternative.me",
+};
+
 let tokenCalculatorState = {
   BTC: { amount: 0, mode: "auto", manualPrice: "" },
   ETH: { amount: 0, mode: "auto", manualPrice: "" },
@@ -1362,6 +1369,32 @@ function renderModal() {
   `;
 }
 
+
+async function fetchFearGreedIndex() {
+  try {
+    const response = await fetch("https://api.alternative.me/fng/?limit=1");
+    if (!response.ok) throw new Error("Fear & Greed request failed");
+    const data = await response.json();
+    const item = data?.data?.[0];
+    if (!item) throw new Error("Fear & Greed payload missing");
+
+    fearGreedState = {
+      value: Number(item.value),
+      classification: item.value_classification,
+      updatedAt: new Date().toISOString(),
+      source: "Alternative.me",
+    };
+
+    if (document.querySelector('[data-view-panel="strategy"].view-active')) {
+      renderFearGreedBlock();
+    }
+  } catch {
+    if (fearGreedState.value === null) {
+      fearGreedState = { value: "—", classification: "нет данных", updatedAt: null, source: "Alternative.me" };
+    }
+  }
+}
+
 function renderAll() {
   renderSummary();
   renderSections();
@@ -1400,7 +1433,9 @@ backupFileInput.addEventListener("change", (event) => {
 });
 seedMarketPricesFromPools();
 fetchBinancePrices();
+fetchFearGreedIndex();
 setInterval(fetchBinancePrices, 60000);
+setInterval(fetchFearGreedIndex, 300000);
 resetBatchDraft();
 renderAll();
 
@@ -1668,14 +1703,25 @@ function renderFearGreedBlock() {
   const block = document.getElementById("fearGreedBlock");
   if (!block) return;
 
+  const value = fearGreedState.value ?? "—";
+  const classificationMap = {
+    "Extreme Fear": "Крайний страх",
+    "Fear": "Страх",
+    "Neutral": "Нейтрально",
+    "Greed": "Жадность",
+    "Extreme Greed": "Крайняя жадность",
+  };
+  const classification = classificationMap[fearGreedState.classification] || fearGreedState.classification || "нет данных";
+
   block.innerHTML = `
     <div class="strategy-fg-inline">
       <span class="field-hint">Индекс страха и жадности:</span>
-      <strong>62 / Жадность</strong>
-      <span class="field-hint">(временная заглушка до подключения real source)</span>
+      <strong>${value} / ${classification}</strong>
+      <span class="field-hint">Источник: ${fearGreedState.source}</span>
     </div>
   `;
 }
+
 
 function renderStrategyCalibrationPools() {
   const root = document.getElementById("strategyCalibrationPools");
