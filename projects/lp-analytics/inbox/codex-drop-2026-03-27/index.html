@@ -21,6 +21,7 @@
             Dashboard
           </button>
           <button class="nav-button" data-view="calculator">Calculator</button>
+          <button class="nav-button" data-view="strategy">Strategy</button>
         </nav>
       </aside>
 
@@ -85,6 +86,30 @@
             <div class="table-scroll">
               <table class="history-table" id="historyTable"></table>
             </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="strategy">
+          <section class="calculator-grid">
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Strategy Sandbox</p>
+                  <h3>Manual Strategy Core</h3>
+                </div>
+              </div>
+              <form id="strategyManualForm" class="calculator-form"></form>
+            </article>
+
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Strategy Results</p>
+                  <h3>Manual Core Output</h3>
+                </div>
+              </div>
+              <div class="calculator-metrics" id="strategyManualMetrics"></div>
+            </article>
           </section>
         </section>
       </main>

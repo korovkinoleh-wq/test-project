@@ -889,3 +889,7 @@ body {
     align-items: stretch;
   }
 }
+
+.warning-note {
+  color: #ffd28a;
+}
