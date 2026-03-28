@@ -78,6 +78,17 @@ let marketPrices = {
   updatedAt: null,
   source: "Pool fallback",
 };
+let strategyManualState = {
+  ecosystem: "ethereum",
+  poolId: "eth-base-aerodrom",
+  manualPriceMode: false,
+  manualPrice: "",
+  capital: 1000,
+  width: 400,
+  assetPct: 5,
+  usdcPct: 95,
+};
+
 let tokenCalculatorState = {
   BTC: { amount: 0, mode: "auto", manualPrice: "" },
   ETH: { amount: 0, mode: "auto", manualPrice: "" },
@@ -1393,16 +1404,16 @@ function validateStrategyManualInputs(input) {
   const assetPct = Number(input.assetPct);
   const usdcPct = Number(input.usdcPct);
 
-  if (!Number.isFinite(capital) || capital <= 0) return { valid: false, message: "Capital must be greater than 0." };
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return { valid: false, message: "Current price must be greater than 0." };
-  if (!Number.isFinite(width) || width <= 0) return { valid: false, message: "Range width must be greater than 0." };
-  if (!Number.isFinite(assetPct) || assetPct < 0) return { valid: false, message: "Asset % must be 0 or greater." };
-  if (!Number.isFinite(usdcPct) || usdcPct < 0) return { valid: false, message: "USDC % must be 0 or greater." };
-  if (Math.abs(assetPct + usdcPct - 100) > 1e-9) return { valid: false, message: "Asset % and USDC % must sum to 100." };
+  if (!Number.isFinite(capital) || capital <= 0) return { valid: false, message: "Капитал должен быть больше 0." };
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return { valid: false, message: "Текущая цена должна быть больше 0." };
+  if (!Number.isFinite(width) || width <= 0) return { valid: false, message: "Ширина диапазона должна быть больше 0." };
+  if (!Number.isFinite(assetPct) || assetPct < 0) return { valid: false, message: "Доля актива % must be 0 or greater." };
+  if (!Number.isFinite(usdcPct) || usdcPct < 0) return { valid: false, message: "Доля Доля USDC должна быть не меньше 0." };
+  if (Math.abs(assetPct + usdcPct - 100) > 1e-9) return { valid: false, message: "Доля актива % and Доля USDC % must sum to 100." };
 
   const downside = width * (usdcPct / 100);
   const lowerBound = currentPrice - downside;
-  if (!Number.isFinite(lowerBound) || lowerBound <= 0) return { valid: false, message: "Lower bound must stay above 0." };
+  if (!Number.isFinite(lowerBound) || lowerBound <= 0) return { valid: false, message: "Нижняя граница должна оставаться выше 0." };
 
   return { valid: true };
 }
@@ -1441,12 +1452,12 @@ function calculateStrategyManualCore(input) {
 function renderStrategyManualMetrics(result) {
   const strategyManualMetrics = document.getElementById("strategyManualMetrics");
   strategyManualMetrics.innerHTML = [
-    { label: "Lower Bound", value: formatMoney(result.lowerBound, 2), hero: true },
-    { label: "Upper Bound", value: formatMoney(result.upperBound, 2), heroAccent: true },
-    { label: "Initial Asset Units", value: formatTokenAmount(result.initialAssetUnits, 8) },
-    { label: "Bought Asset Units @ Lower", value: formatTokenAmount(result.boughtAssetUnitsAtLower, 8) },
-    { label: "Total Asset Units @ Lower", value: formatTokenAmount(result.totalAssetUnitsAtLower, 8) },
-    { label: "PnL @ Lower", value: formatSignedMoney(result.pnlAtLower, 2) },
+    { label: "Нижняя граница", value: formatMoney(result.lowerBound, 2), hero: true },
+    { label: "Верхняя граница", value: formatMoney(result.upperBound, 2), heroAccent: true },
+    { label: "Стартовое количество актива", value: formatTokenAmount(result.initialAssetUnits, 8) },
+    { label: "Купленный актив на нижней границе", value: formatTokenAmount(result.boughtAssetUnitsAtLower, 8) },
+    { label: "Итого актива на нижней границе", value: formatTokenAmount(result.totalAssetUnitsAtLower, 8) },
+    { label: "PnL на нижней границе", value: formatSignedMoney(result.pnlAtLower, 2) },
   ]
     .map(
       (metric) => `
@@ -1463,56 +1474,127 @@ function renderStrategyManual() {
   const strategyManualForm = document.getElementById("strategyManualForm");
   if (!strategyManualForm) return;
 
+  const poolsForEcosystem = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
+  const selectedPool = getStrategySelectedPool();
+  if (selectedPool) {
+    strategyManualState.poolId = selectedPool.id;
+  }
+  const currentPrice = selectedPool ? getStrategyCurrentPrice(selectedPool) : 0;
+  const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
+  const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
+
   strategyManualForm.innerHTML = `
-    <div class="field-hint warning-note">This is Strategy Manual Core only. Auto Split and leverage logic are not included yet.</div>
+    <div class="field-hint warning-note">Сейчас это только ручное ядро стратегии. Auto Split и логика плеча пока не включены.</div>
     <div class="field-row">
       <label class="field">
-        <span class="input-label">Total Capital (USD)</span>
-        <input class="calculator-input" type="number" step="any" min="0" name="capital" value="1000" />
+        <span class="input-label">Экосистема</span>
+        <select class="calculator-select" name="ecosystem">
+          <option value="ethereum" ${strategyManualState.ecosystem === "ethereum" ? "selected" : ""}>Ethereum</option>
+          <option value="bitcoin" ${strategyManualState.ecosystem === "bitcoin" ? "selected" : ""}>Bitcoin</option>
+          <option value="avalanche" ${strategyManualState.ecosystem === "avalanche" ? "selected" : ""}>Avalanche</option>
+        </select>
       </label>
       <label class="field">
-        <span class="input-label">Current Price (USD)</span>
-        <input class="calculator-input" type="number" step="any" min="0" name="currentPrice" value="2000" />
+        <span class="input-label">Эталонный пул</span>
+        <select class="calculator-select" name="poolId">
+          ${poolsForEcosystem.map((pool) => `<option value="${pool.id}" ${pool.id === strategyManualState.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
+        </select>
       </label>
     </div>
     <div class="field-row">
       <label class="field">
-        <span class="input-label">Range Width</span>
-        <input class="calculator-input" type="number" step="any" min="0" name="width" value="400" />
+        <span class="input-label">Общий капитал (USD)</span>
+        <input class="calculator-input" type="number" step="any" min="0" name="capital" value="${strategyManualState.capital}" />
       </label>
       <label class="field">
-        <span class="input-label">Asset %</span>
-        <input class="calculator-input" type="number" step="any" min="0" max="100" name="assetPct" value="5" />
+        <span class="input-label">Текущая цена (USD)</span>
+        <input class="calculator-input" type="number" step="any" min="0" name="currentPrice" value="${currentPrice}" ${strategyManualState.manualPriceMode ? "" : "disabled"} />
+      </label>
+    </div>
+    <label class="field" style="grid-template-columns: auto 1fr; align-items: center; gap: 10px;">
+      <input type="checkbox" name="manualPriceMode" ${strategyManualState.manualPriceMode ? "checked" : ""} />
+      <span class="input-label">Ввести цену вручную</span>
+    </label>
+    <div class="field-row">
+      <label class="field">
+        <span class="input-label">Ширина диапазона</span>
+        <input class="calculator-input" type="number" step="any" min="0" name="width" value="${strategyManualState.width}" />
+      </label>
+      <label class="field">
+        <span class="input-label">Доля актива %</span>
+        <input class="calculator-input" type="number" step="any" min="0" max="100" name="assetPct" value="${strategyManualState.assetPct}" />
       </label>
     </div>
     <label class="field">
-      <span class="input-label">USDC %</span>
-      <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="95" />
+      <span class="input-label">Доля USDC %</span>
+      <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="${strategyManualState.usdcPct}" />
     </label>
-    <div class="field-hint">This output reflects lower-bound accumulation math, not full market path simulation.</div>
+    <div class="field-hint">Разбивка капитала: Актив — ${formatMoney(assetUsd, 2)} | USDC — ${formatMoney(usdcUsd, 2)}</div>
+    <div class="field-hint">По умолчанию цена подставляется из выбранного эталонного пула. Ручной ввод нужен для сценарных симуляций.</div>
+    <div class="field-hint">Здесь показывается математика накопления на нижней границе, а не полная симуляция рыночного пути.</div>
     <div class="calculator-actions">
-      <button class="calculator-button" type="submit">Run Strategy Manual Core</button>
+      <button class="calculator-button" type="submit">Рассчитать стратегию</button>
     </div>
   `;
 
-  const initial = calculateStrategyManualCore({
-    capital: 1000,
-    currentPrice: 2000,
-    width: 400,
-    assetPct: 5,
-    usdcPct: 95,
+  const validation = validateStrategyManualInputs({
+    capital: strategyManualState.capital,
+    currentPrice,
+    width: strategyManualState.width,
+    assetPct: strategyManualState.assetPct,
+    usdcPct: strategyManualState.usdcPct,
   });
-  renderStrategyManualMetrics(initial);
+  if (validation.valid) {
+    renderStrategyManualMetrics(calculateStrategyManualCore({
+      capital: strategyManualState.capital,
+      currentPrice,
+      width: strategyManualState.width,
+      assetPct: strategyManualState.assetPct,
+      usdcPct: strategyManualState.usdcPct,
+    }));
+  }
+
+  strategyManualForm.querySelector('[name="ecosystem"]').addEventListener("change", (event) => {
+    strategyManualState.ecosystem = event.target.value;
+    const nextPools = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
+    strategyManualState.poolId = nextPools[0]?.id || strategyManualState.poolId;
+    if (!strategyManualState.manualPriceMode) {
+      strategyManualState.manualPrice = "";
+    }
+    renderStrategyManual();
+  });
+
+  strategyManualForm.querySelector('[name="poolId"]').addEventListener("change", (event) => {
+    strategyManualState.poolId = event.target.value;
+    if (!strategyManualState.manualPriceMode) {
+      strategyManualState.manualPrice = "";
+    }
+    renderStrategyManual();
+  });
+
+  strategyManualForm.querySelector('[name="manualPriceMode"]').addEventListener("change", (event) => {
+    strategyManualState.manualPriceMode = event.target.checked;
+    if (!strategyManualState.manualPriceMode) {
+      strategyManualState.manualPrice = "";
+    }
+    renderStrategyManual();
+  });
 
   strategyManualForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = new FormData(strategyManualForm);
+    strategyManualState.capital = Number(form.get("capital"));
+    strategyManualState.width = Number(form.get("width"));
+    strategyManualState.assetPct = Number(form.get("assetPct"));
+    strategyManualState.usdcPct = Number(form.get("usdcPct"));
+    strategyManualState.manualPrice = String(form.get("currentPrice") || "");
+
     const input = {
-      capital: Number(form.get("capital")),
-      currentPrice: Number(form.get("currentPrice")),
-      width: Number(form.get("width")),
-      assetPct: Number(form.get("assetPct")),
-      usdcPct: Number(form.get("usdcPct")),
+      capital: strategyManualState.capital,
+      currentPrice: strategyManualState.manualPriceMode ? Number(strategyManualState.manualPrice) : getCurrentMarketPriceForPool(selectedPool),
+      width: strategyManualState.width,
+      assetPct: strategyManualState.assetPct,
+      usdcPct: strategyManualState.usdcPct,
     };
 
     const validation = validateStrategyManualInputs(input);
@@ -1521,7 +1603,24 @@ function renderStrategyManual() {
       return;
     }
 
-    const result = calculateStrategyManualCore(input);
-    renderStrategyManualMetrics(result);
+    renderStrategyManualMetrics(calculateStrategyManualCore(input));
+    renderStrategyManual();
   });
+}
+
+
+function getStrategyPoolsByEcosystem(ecosystem) {
+  return getAllPoolStates().filter((state) => state.ecosystem === ecosystem);
+}
+
+function getStrategySelectedPool() {
+  const poolsForEcosystem = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
+  return poolsForEcosystem.find((state) => state.id === strategyManualState.poolId) || poolsForEcosystem[0] || getAllPoolStates()[0];
+}
+
+function getStrategyCurrentPrice(selectedPool) {
+  if (strategyManualState.manualPriceMode && Number(strategyManualState.manualPrice) > 0) {
+    return Number(strategyManualState.manualPrice);
+  }
+  return getCurrentMarketPriceForPool(selectedPool);
 }
