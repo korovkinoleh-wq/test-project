@@ -1556,9 +1556,6 @@ function renderStrategyManual() {
   if (!strategyManualForm) return;
 
   const selectedPool = getStrategySelectedPool();
-  if (selectedPool) {
-    strategyManualState.poolId = selectedPool.id;
-  }
   const currentPrice = selectedPool ? getStrategyCurrentPrice(selectedPool) : 0;
   const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
   const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
@@ -1606,15 +1603,12 @@ function renderStrategyManual() {
   strategyManualForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = new FormData(strategyManualForm);
-    strategyManualState.capital = Number(form.get("capital"));
     strategyManualState.width = Number(form.get("width"));
     strategyManualState.assetPct = Number(form.get("assetPct"));
     strategyManualState.usdcPct = Number(form.get("usdcPct"));
-    strategyManualState.manualPrice = String(form.get("currentPrice") || "");
-
     const input = {
       capital: strategyManualState.capital,
-      currentPrice: strategyManualState.manualPriceMode ? Number(strategyManualState.manualPrice) : getCurrentMarketPriceForPool(selectedPool),
+      currentPrice: getCurrentMarketPriceForPool(selectedPool),
       width: strategyManualState.width,
       assetPct: strategyManualState.assetPct,
       usdcPct: strategyManualState.usdcPct,
@@ -1637,14 +1631,12 @@ function getStrategyPoolsByEcosystem(ecosystem) {
 }
 
 function getStrategySelectedPool() {
-  const poolsForEcosystem = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
-  return poolsForEcosystem.find((state) => state.id === strategyManualState.poolId) || poolsForEcosystem[0] || getAllPoolStates()[0];
+  const keys = strategySelectedKeys();
+  const firstKey = keys[0] || "ethereum";
+  return getStrategyPoolForKey(firstKey) || getAllPoolStates()[0];
 }
 
 function getStrategyCurrentPrice(selectedPool) {
-  if (strategyManualState.manualPriceMode && Number(strategyManualState.manualPrice) > 0) {
-    return Number(strategyManualState.manualPrice);
-  }
   return getCurrentMarketPriceForPool(selectedPool);
 }
 
@@ -1665,26 +1657,50 @@ function renderStrategyCalibrationPools() {
   const root = document.getElementById("strategyCalibrationPools");
   if (!root) return;
 
-  const states = getAllPoolStates();
-  const refs = {
-    ethereum: states.filter((s) => s.ecosystem === "ethereum").sort((a, b) => b.apr - a.apr)[0],
-    bitcoin: states.filter((s) => s.ecosystem === "bitcoin").sort((a, b) => b.apr - a.apr)[0],
-    avalanche: states.filter((s) => s.ecosystem === "avalanche").sort((a, b) => b.apr - a.apr)[0],
-  };
-
-  root.innerHTML = [refs.ethereum, refs.bitcoin, refs.avalanche]
-    .filter(Boolean)
-    .map((pool) => `
+  const labels = { ethereum: "ETH", bitcoin: "BTC", avalanche: "AVAX" };
+  root.innerHTML = ["ethereum", "bitcoin", "avalanche"].map((key) => {
+    const cfg = strategyManualState.calibration[key];
+    const pools = getAllPoolStates().filter((state) => state.ecosystem === key);
+    const selected = pools.find((pool) => pool.id === cfg.poolId) || pools[0];
+    if (selected) cfg.poolId = selected.id;
+    return `
       <article class="strategy-calibration-card">
-        <span>${pool.ecosystem === "ethereum" ? "ETH" : pool.ecosystem === "bitcoin" ? "BTC" : "AVAX"} reference</span>
-        <strong>${pool.asset} | ${pool.dex} | ${pool.network}</strong>
-        <p class="field-hint">Ref APR: ${formatNumber(pool.apr, 2)}%</p>
-        <p class="field-hint">Ref range: ${formatNumber(pool.minRange, 2)} - ${formatNumber(pool.maxRange, 2)}</p>
+        <label class="field" style="grid-template-columns: auto 1fr; align-items: center; gap: 10px;">
+          <input type="checkbox" data-calibration-enabled="${key}" ${cfg.enabled ? "checked" : ""} />
+          <span class="input-label">${labels[key]} pool включён</span>
+        </label>
+        <label class="field">
+          <span class="input-label">${labels[key]} reference pool</span>
+          <select class="calculator-select" data-calibration-pool="${key}">
+            ${pools.map((pool) => `<option value="${pool.id}" ${pool.id === cfg.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
+          </select>
+        </label>
+        <p class="field-hint">Ref APR: ${selected ? formatNumber(selected.apr, 2) : "0.00"}%</p>
       </article>
-    `)
-    .join("");
-}
+    `;
+  }).join("");
 
+  root.querySelectorAll('[data-calibration-enabled]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.calibrationEnabled;
+      strategyManualState.calibration[key].enabled = event.target.checked;
+      if (key === 'avalanche' && event.target.checked && strategyManualState.allocations.avalanche === 0) {
+        strategyManualState.allocations.avalanche = 1;
+        strategyManualState.allocations.bitcoin = Math.max(0, strategyManualState.allocations.bitcoin - 1);
+      }
+      rebalanceStrategyAllocations();
+      renderStrategyManual();
+    });
+  });
+
+  root.querySelectorAll('[data-calibration-pool]').forEach((el) => {
+    el.addEventListener('change', (event) => {
+      const key = event.target.dataset.calibrationPool;
+      strategyManualState.calibration[key].poolId = event.target.value;
+      renderStrategyManual();
+    });
+  });
+}
 
 function strategySelectedKeys() {
   return ["ethereum", "bitcoin", "avalanche"].filter((key) => strategyManualState.calibration[key].enabled);
@@ -1709,43 +1725,44 @@ function rebalanceStrategyAllocations(changedKey = null) {
     if (!keys.includes(key)) strategyManualState.allocations[key] = 0;
   }
 
+  if (keys.length === 1) {
+    strategyManualState.allocations[keys[0]] = 100;
+    return;
+  }
+
   if (changedKey && keys.includes(changedKey)) {
-    const otherKeys = keys.filter((k) => k !== changedKey);
     const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
     strategyManualState.allocations[changedKey] = changedValue;
-    let remainder = 100 - changedValue;
-    if (otherKeys.length === 1) {
-      strategyManualState.allocations[otherKeys[0]] = remainder;
+    const others = keys.filter((k) => k !== changedKey);
+    const remainder = Number((100 - changedValue).toFixed(2));
+    if (others.length === 1) {
+      strategyManualState.allocations[others[0]] = remainder;
       return;
     }
-    if (otherKeys.length > 1) {
-      const currentOtherSum = otherKeys.reduce((sum, k) => sum + (Number(strategyManualState.allocations[k]) || 0), 0);
-      if (currentOtherSum <= 0) {
-        const base = Math.floor((remainder / otherKeys.length) * 100) / 100;
-        let used = 0;
-        otherKeys.forEach((k, idx) => {
-          const value = idx === otherKeys.length - 1 ? Number((remainder - used).toFixed(2)) : base;
-          strategyManualState.allocations[k] = value;
-          used += value;
-        });
-      } else {
-        let used = 0;
-        otherKeys.forEach((k, idx) => {
-          const share = (Number(strategyManualState.allocations[k]) || 0) / currentOtherSum;
-          const value = idx === otherKeys.length - 1 ? Number((remainder - used).toFixed(2)) : Number((remainder * share).toFixed(2));
-          strategyManualState.allocations[k] = value;
-          used += value;
-        });
-      }
+    if (others.length === 2) {
+      strategyManualState.allocations[others[0]] = remainder;
+      strategyManualState.allocations[others[1]] = 0;
       return;
     }
   }
 
-  if (keys.length === 1) {
-    strategyManualState.allocations[keys[0]] = 100;
-  } else if (keys.length === 2) {
-    const active = keys.map((k) => Number(strategyManualState.allocations[k]) || 0);
-    if (active[0] === 0 and active[1] === 0):
-      pass
+  if (keys.length === 2) {
+    if (keys.includes("ethereum") && keys.includes("bitcoin")) {
+      strategyManualState.allocations.ethereum = 30;
+      strategyManualState.allocations.bitcoin = 70;
+    } else {
+      strategyManualState.allocations[keys[0]] = 50;
+      strategyManualState.allocations[keys[1]] = 50;
+    }
+    return;
+  }
+
+  if (keys.length === 3) {
+    const total = (Number(strategyManualState.allocations.ethereum) || 30) + (Number(strategyManualState.allocations.bitcoin) || 70) + (Number(strategyManualState.allocations.avalanche) || 0);
+    const eth = Number((((Number(strategyManualState.allocations.ethereum) || 30) / total) * 100).toFixed(2));
+    const btc = Number((((Number(strategyManualState.allocations.bitcoin) || 70) / total) * 100).toFixed(2));
+    strategyManualState.allocations.ethereum = eth;
+    strategyManualState.allocations.bitcoin = btc;
+    strategyManualState.allocations.avalanche = Number((100 - eth - btc).toFixed(2));
   }
 }
