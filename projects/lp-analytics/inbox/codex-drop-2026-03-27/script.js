@@ -1418,6 +1418,9 @@ function bindNavigation() {
       viewPanels.forEach((panel) =>
         panel.classList.toggle("view-active", panel.dataset.viewPanel === view)
       );
+      if (view === "strategy") {
+        renderFearGreedBlock();
+      }
     });
   });
 }
