@@ -654,6 +654,12 @@ function getBatchOptionLabel(batch, index) {
   return `#${index + 1} - ${formatDateTime(batch.snapshotAt)}`;
 }
 
+
+
+function getPoolDisplayOption(pool) {
+  return `${pool.asset} | ${pool.dex} | ${pool.network} | ${formatNumber(pool.feePct, 3)}%`;
+}
+
 function getPoolDisplayName(state) {
   const hasDuplicateVisualName = pools.some(
     (pool) =>
@@ -1508,7 +1514,7 @@ function renderStrategyPortfolio() {
             <input class="calculator-input" type="number" step="any" min="0" data-price-input="${key}" value="${price}" ${strategyManualState.calibration[key].manualPriceMode ? "" : "disabled"} />
           </label>
           <div class="token-inline-note">
-            ${pool ? `${pool.asset} | ${pool.dex} | ${pool.network}` : "Pool not selected"}<br/>
+            ${pool ? `${getPoolDisplayOption(pool)}` : "Pool not selected"}<br/>
             В USD: ${formatMoney(usd, 2)}<br/>
             <label style="display:inline-flex; gap:6px; align-items:center; margin-top:6px;">
               <input type="checkbox" data-manual-price-toggle="${key}" ${strategyManualState.calibration[key].manualPriceMode ? "checked" : ""} />
@@ -1555,10 +1561,11 @@ function renderStrategyManual() {
   const strategyManualForm = document.getElementById("strategyManualForm");
   if (!strategyManualForm) return;
 
-  const selectedPool = getStrategySelectedPool();
-  const currentPrice = selectedPool ? getStrategyCurrentPrice(selectedPool) : 0;
+  const keys = strategySelectedKeys();
   const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
   const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
+  const selectedPool = getStrategySelectedPool();
+  const currentPrice = selectedPool ? getCurrentMarketPriceForPool(selectedPool) : 0;
 
   strategyManualForm.innerHTML = `
     <div class="field-hint warning-note">Сейчас это только ручное ядро стратегии. Auto Split и логика плеча пока не включены.</div>
@@ -1576,7 +1583,23 @@ function renderStrategyManual() {
       <span class="input-label">Доля USDC %</span>
       <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="${strategyManualState.usdcPct}" />
     </label>
-    <div class="field-hint">Разбивка диапазона по умолчанию: Актив — ${formatMoney(assetUsd, 2)} | USDC — ${formatMoney(usdcUsd, 2)}</div>
+    ${keys.map((key) => {
+      const pool = getStrategyPoolForKey(key);
+      const allocPct = strategyManualState.allocations[key] || 0;
+      const poolCapital = strategyManualState.capital * (allocPct / 100);
+      const poolAssetUsd = poolCapital * (strategyManualState.assetPct / 100);
+      const poolUsdcUsd = poolCapital * (strategyManualState.usdcPct / 100);
+      return `
+        <div class="token-row" style="grid-template-columns: 120px 1fr;">
+          <div class="token-symbol">${key === "ethereum" ? "ETH" : key === "bitcoin" ? "BTC" : "AVAX"}</div>
+          <div class="token-inline-note">
+            ${pool ? getPoolDisplayOption(pool) : "Pool not selected"}<br/>
+            Аллокация: ${formatNumber(allocPct, 2)}% / ${formatMoney(poolCapital, 2)}<br/>
+            Актив: ${formatMoney(poolAssetUsd, 2)} | USDC: ${formatMoney(poolUsdcUsd, 2)}
+          </div>
+        </div>
+      `;
+    }).join("")}
     <div class="field-hint">Здесь показывается математика накопления на нижней границе, а не полная симуляция рыночного пути.</div>
     <div class="calculator-actions">
       <button class="calculator-button" type="submit">Рассчитать стратегию</button>
@@ -1606,9 +1629,10 @@ function renderStrategyManual() {
     strategyManualState.width = Number(form.get("width"));
     strategyManualState.assetPct = Number(form.get("assetPct"));
     strategyManualState.usdcPct = Number(form.get("usdcPct"));
+
     const input = {
       capital: strategyManualState.capital,
-      currentPrice: getCurrentMarketPriceForPool(selectedPool),
+      currentPrice,
       width: strategyManualState.width,
       assetPct: strategyManualState.assetPct,
       usdcPct: strategyManualState.usdcPct,
@@ -1672,7 +1696,7 @@ function renderStrategyCalibrationPools() {
         <label class="field">
           <span class="input-label">${labels[key]} reference pool</span>
           <select class="calculator-select" data-calibration-pool="${key}">
-            ${pools.map((pool) => `<option value="${pool.id}" ${pool.id === cfg.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
+            ${pools.map((pool) => `<option value="${pool.id}" ${pool.id === cfg.poolId ? "selected" : ""}>${getPoolDisplayOption(pool)}</option>`).join("")}
           </select>
         </label>
         <p class="field-hint">Ref APR: ${selected ? formatNumber(selected.apr, 2) : "0.00"}%</p>
@@ -1722,7 +1746,9 @@ function rebalanceStrategyAllocations(changedKey = null) {
   if (!keys.length) return;
 
   for (const key of ["ethereum", "bitcoin", "avalanche"]) {
-    if (!keys.includes(key)) strategyManualState.allocations[key] = 0;
+    if (!keys.includes(key)) {
+      strategyManualState.allocations[key] = 0;
+    }
   }
 
   if (keys.length === 1) {
@@ -1730,39 +1756,52 @@ function rebalanceStrategyAllocations(changedKey = null) {
     return;
   }
 
-  if (changedKey && keys.includes(changedKey)) {
-    const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
-    strategyManualState.allocations[changedKey] = changedValue;
-    const others = keys.filter((k) => k !== changedKey);
-    const remainder = Number((100 - changedValue).toFixed(2));
-    if (others.length === 1) {
-      strategyManualState.allocations[others[0]] = remainder;
+  if (!changedKey || !keys.includes(changedKey)) {
+    if (keys.length === 2) {
+      if (keys.includes("ethereum") && keys.includes("bitcoin")) {
+        strategyManualState.allocations.ethereum = 30;
+        strategyManualState.allocations.bitcoin = 70;
+      } else if (keys.includes("ethereum") && keys.includes("avalanche")) {
+        strategyManualState.allocations.ethereum = 99;
+        strategyManualState.allocations.avalanche = 1;
+      } else {
+        strategyManualState.allocations.bitcoin = 99;
+        strategyManualState.allocations.avalanche = 1;
+      }
       return;
     }
-    if (others.length === 2) {
-      strategyManualState.allocations[others[0]] = remainder;
-      strategyManualState.allocations[others[1]] = 0;
+
+    if (keys.length === 3) {
+      strategyManualState.allocations.ethereum = 30;
+      strategyManualState.allocations.bitcoin = 69;
+      strategyManualState.allocations.avalanche = 1;
       return;
     }
   }
 
-  if (keys.length === 2) {
-    if (keys.includes("ethereum") && keys.includes("bitcoin")) {
-      strategyManualState.allocations.ethereum = 30;
-      strategyManualState.allocations.bitcoin = 70;
-    } else {
-      strategyManualState.allocations[keys[0]] = 50;
-      strategyManualState.allocations[keys[1]] = 50;
-    }
+  const changedValue = Math.max(0, Math.min(100, Number(strategyManualState.allocations[changedKey]) || 0));
+  strategyManualState.allocations[changedKey] = changedValue;
+  const others = keys.filter((k) => k !== changedKey);
+  let remainder = Number((100 - changedValue).toFixed(2));
+
+  if (others.length === 1) {
+    strategyManualState.allocations[others[0]] = remainder;
     return;
   }
 
-  if (keys.length === 3) {
-    const total = (Number(strategyManualState.allocations.ethereum) || 30) + (Number(strategyManualState.allocations.bitcoin) || 70) + (Number(strategyManualState.allocations.avalanche) || 0);
-    const eth = Number((((Number(strategyManualState.allocations.ethereum) || 30) / total) * 100).toFixed(2));
-    const btc = Number((((Number(strategyManualState.allocations.bitcoin) || 70) / total) * 100).toFixed(2));
-    strategyManualState.allocations.ethereum = eth;
-    strategyManualState.allocations.bitcoin = btc;
-    strategyManualState.allocations.avalanche = Number((100 - eth - btc).toFixed(2));
+  if (others.length === 2) {
+    const [first, second] = others;
+    const currentSecond = Number(strategyManualState.allocations[second]) || 0;
+    const currentFirst = Number(strategyManualState.allocations[first]) || 0;
+    const total = currentFirst + currentSecond;
+
+    if (total <= 0) {
+      strategyManualState.allocations[first] = remainder;
+      strategyManualState.allocations[second] = 0;
+    } else {
+      const firstValue = Number(((currentFirst / total) * remainder).toFixed(2));
+      strategyManualState.allocations[first] = firstValue;
+      strategyManualState.allocations[second] = Number((remainder - firstValue).toFixed(2));
+    }
   }
 }
