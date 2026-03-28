@@ -893,3 +893,67 @@ body {
 .warning-note {
   color: #ffd28a;
 }
+
+.strategy-shell {
+  margin-top: 18px;
+}
+
+.strategy-topbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.strategy-mode-pill {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.strategy-mode-pill.active {
+  border-color: rgba(0, 192, 139, 0.5);
+  background: rgba(0, 192, 139, 0.12);
+}
+
+.strategy-grid-top,
+.strategy-grid-bottom {
+  margin-top: 18px;
+}
+
+.strategy-fg-block {
+  display: grid;
+  gap: 12px;
+}
+
+.strategy-fg-meter {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 180, 84, 0.25);
+  background: linear-gradient(135deg, rgba(255, 180, 84, 0.14), rgba(28, 22, 8, 0.92));
+}
+
+.strategy-fg-meter strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.8rem;
+}
+
+.strategy-calibration-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.strategy-calibration-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.strategy-calibration-card strong {
+  display: block;
+  margin-top: 8px;
+}

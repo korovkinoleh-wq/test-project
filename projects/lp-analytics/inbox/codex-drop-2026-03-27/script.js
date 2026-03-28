@@ -1354,6 +1354,9 @@ function renderAll() {
   renderSummary();
   renderSections();
   renderCalculator();
+  renderFearGreedBlock();
+  renderStrategyCalibrationPools();
+  renderStrategyPortfolio();
   renderStrategyManual();
   if (modalPoolId) {
     renderModal();
@@ -1470,21 +1473,17 @@ function renderStrategyManualMetrics(result) {
     .join("");
 }
 
-function renderStrategyManual() {
-  const strategyManualForm = document.getElementById("strategyManualForm");
-  if (!strategyManualForm) return;
+function renderStrategyPortfolio() {
+  const form = document.getElementById("strategyPortfolioForm");
+  if (!form) return;
 
-  const poolsForEcosystem = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
   const selectedPool = getStrategySelectedPool();
-  if (selectedPool) {
-    strategyManualState.poolId = selectedPool.id;
-  }
-  const currentPrice = selectedPool ? getStrategyCurrentPrice(selectedPool) : 0;
-  const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
-  const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
+  const autoPrice = selectedPool ? getCurrentMarketPriceForPool(selectedPool) : 0;
+  const currentPrice = strategyManualState.manualPriceMode && Number(strategyManualState.manualPrice) > 0
+    ? Number(strategyManualState.manualPrice)
+    : autoPrice;
 
-  strategyManualForm.innerHTML = `
-    <div class="field-hint warning-note">Сейчас это только ручное ядро стратегии. Auto Split и логика плеча пока не включены.</div>
+  form.innerHTML = `
     <div class="field-row">
       <label class="field">
         <span class="input-label">Экосистема</span>
@@ -1497,7 +1496,7 @@ function renderStrategyManual() {
       <label class="field">
         <span class="input-label">Эталонный пул</span>
         <select class="calculator-select" name="poolId">
-          ${poolsForEcosystem.map((pool) => `<option value="${pool.id}" ${pool.id === strategyManualState.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
+          ${getStrategyPoolsByEcosystem(strategyManualState.ecosystem).map((pool) => `<option value="${pool.id}" ${pool.id === strategyManualState.poolId ? "selected" : ""}>${pool.asset} | ${pool.dex} | ${pool.network}</option>`).join("")}
         </select>
       </label>
     </div>
@@ -1515,6 +1514,50 @@ function renderStrategyManual() {
       <input type="checkbox" name="manualPriceMode" ${strategyManualState.manualPriceMode ? "checked" : ""} />
       <span class="input-label">Ввести цену вручную</span>
     </label>
+    <div class="field-hint">По умолчанию цена берётся из выбранного эталонного пула. Ручной режим нужен для будущих сценарных симуляций.</div>
+  `;
+
+  form.querySelector('[name="ecosystem"]').addEventListener("change", (event) => {
+    strategyManualState.ecosystem = event.target.value;
+    const nextPools = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
+    strategyManualState.poolId = nextPools[0]?.id || strategyManualState.poolId;
+    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
+    renderStrategyManual();
+  });
+
+  form.querySelector('[name="poolId"]').addEventListener("change", (event) => {
+    strategyManualState.poolId = event.target.value;
+    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
+    renderStrategyManual();
+  });
+
+  form.querySelector('[name="manualPriceMode"]').addEventListener("change", (event) => {
+    strategyManualState.manualPriceMode = event.target.checked;
+    if (!strategyManualState.manualPriceMode) strategyManualState.manualPrice = "";
+    renderStrategyManual();
+  });
+
+  form.addEventListener("change", () => {
+    const data = new FormData(form);
+    strategyManualState.capital = Number(data.get("capital"));
+    strategyManualState.manualPrice = String(data.get("currentPrice") || "");
+  });
+}
+
+function renderStrategyManual() {
+  const strategyManualForm = document.getElementById("strategyManualForm");
+  if (!strategyManualForm) return;
+
+  const selectedPool = getStrategySelectedPool();
+  if (selectedPool) {
+    strategyManualState.poolId = selectedPool.id;
+  }
+  const currentPrice = selectedPool ? getStrategyCurrentPrice(selectedPool) : 0;
+  const assetUsd = strategyManualState.capital * (strategyManualState.assetPct / 100);
+  const usdcUsd = strategyManualState.capital * (strategyManualState.usdcPct / 100);
+
+  strategyManualForm.innerHTML = `
+    <div class="field-hint warning-note">Сейчас это только ручное ядро стратегии. Auto Split и логика плеча пока не включены.</div>
     <div class="field-row">
       <label class="field">
         <span class="input-label">Ширина диапазона</span>
@@ -1530,7 +1573,6 @@ function renderStrategyManual() {
       <input class="calculator-input" type="number" step="any" min="0" max="100" name="usdcPct" value="${strategyManualState.usdcPct}" />
     </label>
     <div class="field-hint">Разбивка капитала: Актив — ${formatMoney(assetUsd, 2)} | USDC — ${formatMoney(usdcUsd, 2)}</div>
-    <div class="field-hint">По умолчанию цена подставляется из выбранного эталонного пула. Ручной ввод нужен для сценарных симуляций.</div>
     <div class="field-hint">Здесь показывается математика накопления на нижней границе, а не полная симуляция рыночного пути.</div>
     <div class="calculator-actions">
       <button class="calculator-button" type="submit">Рассчитать стратегию</button>
@@ -1553,32 +1595,6 @@ function renderStrategyManual() {
       usdcPct: strategyManualState.usdcPct,
     }));
   }
-
-  strategyManualForm.querySelector('[name="ecosystem"]').addEventListener("change", (event) => {
-    strategyManualState.ecosystem = event.target.value;
-    const nextPools = getStrategyPoolsByEcosystem(strategyManualState.ecosystem);
-    strategyManualState.poolId = nextPools[0]?.id || strategyManualState.poolId;
-    if (!strategyManualState.manualPriceMode) {
-      strategyManualState.manualPrice = "";
-    }
-    renderStrategyManual();
-  });
-
-  strategyManualForm.querySelector('[name="poolId"]').addEventListener("change", (event) => {
-    strategyManualState.poolId = event.target.value;
-    if (!strategyManualState.manualPriceMode) {
-      strategyManualState.manualPrice = "";
-    }
-    renderStrategyManual();
-  });
-
-  strategyManualForm.querySelector('[name="manualPriceMode"]').addEventListener("change", (event) => {
-    strategyManualState.manualPriceMode = event.target.checked;
-    if (!strategyManualState.manualPriceMode) {
-      strategyManualState.manualPrice = "";
-    }
-    renderStrategyManual();
-  });
 
   strategyManualForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1623,4 +1639,41 @@ function getStrategyCurrentPrice(selectedPool) {
     return Number(strategyManualState.manualPrice);
   }
   return getCurrentMarketPriceForPool(selectedPool);
+}
+
+function renderFearGreedBlock() {
+  const block = document.getElementById("fearGreedBlock");
+  if (!block) return;
+
+  block.innerHTML = `
+    <div class="strategy-fg-meter">
+      <span>Текущий режим рынка</span>
+      <strong>62 / Жадность</strong>
+      <p class="field-hint">Пока это временный индикатор-заглушка. Позже подключим реальный источник данных.</p>
+    </div>
+  `;
+}
+
+function renderStrategyCalibrationPools() {
+  const root = document.getElementById("strategyCalibrationPools");
+  if (!root) return;
+
+  const states = getAllPoolStates();
+  const refs = {
+    ethereum: states.filter((s) => s.ecosystem === "ethereum").sort((a, b) => b.apr - a.apr)[0],
+    bitcoin: states.filter((s) => s.ecosystem === "bitcoin").sort((a, b) => b.apr - a.apr)[0],
+    avalanche: states.filter((s) => s.ecosystem === "avalanche").sort((a, b) => b.apr - a.apr)[0],
+  };
+
+  root.innerHTML = [refs.ethereum, refs.bitcoin, refs.avalanche]
+    .filter(Boolean)
+    .map((pool) => `
+      <article class="strategy-calibration-card">
+        <span>${pool.ecosystem === "ethereum" ? "ETH" : pool.ecosystem === "bitcoin" ? "BTC" : "AVAX"} reference</span>
+        <strong>${pool.asset} | ${pool.dex} | ${pool.network}</strong>
+        <p class="field-hint">Ref APR: ${formatNumber(pool.apr, 2)}%</p>
+        <p class="field-hint">Ref range: ${formatNumber(pool.minRange, 2)} - ${formatNumber(pool.maxRange, 2)}</p>
+      </article>
+    `)
+    .join("");
 }

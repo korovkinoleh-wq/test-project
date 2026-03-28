@@ -90,25 +90,71 @@
         </section>
 
         <section class="view" data-view-panel="strategy">
-          <section class="calculator-grid">
+          <section class="panel strategy-shell">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Стратегия</p>
+                <h3>Стратегия LP</h3>
+              </div>
+            </div>
+            <div class="strategy-topbar">
+              <div class="strategy-mode-pill active">Стратегия накопления</div>
+              <div class="strategy-mode-pill">Стратегия распределения</div>
+              <div class="strategy-mode-pill">Синхронизация цен: live</div>
+            </div>
+          </section>
+
+          <section class="calculator-grid strategy-grid-top">
             <article class="panel calc-panel">
               <div class="panel-head">
                 <div>
-                  <p class="eyebrow">Песочница стратегии</p>
-                  <h3>Ручное ядро стратегии</h3>
+                  <p class="eyebrow">Рыночный режим</p>
+                  <h3>Индикатор страха и жадности</h3>
                 </div>
               </div>
-              <form id="strategyManualForm" class="calculator-form"></form>
+              <div id="fearGreedBlock" class="strategy-fg-block"></div>
             </article>
 
             <article class="panel calc-panel">
               <div class="panel-head">
                 <div>
-                  <p class="eyebrow">Результаты стратегии</p>
+                  <p class="eyebrow">Результаты</p>
                   <h3>Выход ручного ядра</h3>
                 </div>
               </div>
               <div class="calculator-metrics" id="strategyManualMetrics"></div>
+            </article>
+          </section>
+
+          <section class="panel calc-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Эталонные данные</p>
+                <h3>Calibration Pools</h3>
+              </div>
+            </div>
+            <div id="strategyCalibrationPools" class="strategy-calibration-grid"></div>
+          </section>
+
+          <section class="calculator-grid strategy-grid-bottom">
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Портфель</p>
+                  <h3>Реальный портфель</h3>
+                </div>
+              </div>
+              <form id="strategyPortfolioForm" class="calculator-form"></form>
+            </article>
+
+            <article class="panel calc-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Диапазон</p>
+                  <h3>Распределение внутри диапазона</h3>
+                </div>
+              </div>
+              <form id="strategyManualForm" class="calculator-form"></form>
             </article>
           </section>
         </section>
