@@ -219,6 +219,8 @@ Forbidden:
 - promising "I’ll update you myself" and then not returning
 - going silent on long tasks
 - presenting internal process as if it were the result
+- repeatedly restating failure without attempting a different concrete fix path
+- using self-critique or meta-explanations as a substitute for execution
 
 Required update format:
 - Done
