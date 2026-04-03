@@ -221,6 +221,8 @@ Forbidden:
 - presenting internal process as if it were the result
 - repeatedly restating failure without attempting a different concrete fix path
 - using self-critique or meta-explanations as a substitute for execution
+- replying with empty acknowledgements like "принял/чиню/исправляю" when no real action has yet been taken
+- delaying an obvious file/config update after being told to do it immediately
 
 Required update format:
 - Done
