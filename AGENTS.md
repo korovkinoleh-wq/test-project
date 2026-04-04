@@ -223,6 +223,7 @@ Forbidden:
 - using self-critique or meta-explanations as a substitute for execution
 - replying with empty acknowledgements like "принял/чиню/исправляю" when no real action has yet been taken
 - replying with phrases like "делаю", "моя вина", "исправляю именно это", or similar filler when no concrete action/result is included
+- replying with soft evaluative language like "справедливо", "тебя не устраивает", "это тот случай" instead of giving a result/action
 - delaying an obvious file/config update after being told to do it immediately
 - sending a reply to an execution request unless it contains a concrete action already taken, a concrete result, or a concrete blocker
 
